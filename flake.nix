@@ -17,6 +17,7 @@
           packages = [
             (rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
             cargo-leptos
+            sass
           ];
           
           nativeBuildInputs = [ ];
