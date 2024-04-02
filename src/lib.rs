@@ -2,7 +2,7 @@
 use axum::extract::FromRef;
 #[cfg(feature = "ssr")]
 use leptos_router::RouteListing;
-use std::path::PathBuf;
+use std::collections::VecDeque;
 #[cfg(feature = "ssr")]
 use std::sync::Arc;
 #[cfg(feature = "ssr")]
@@ -26,14 +26,28 @@ pub fn hydrate() {
     leptos::mount_to_body(App);
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
-    id: i32,
-    file: RwSignal<PathBuf>,
-    position: RwSignal<Position>,
+    pub url: RwSignal<String>,
+    pub position: RwSignal<Position>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+impl From<ServerPlayer> for Player {
+    fn from(value: ServerPlayer) -> Self {
+        Self {
+            url: RwSignal::new(value.url),
+            position: RwSignal::new(value.position),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerPlayer {
+    pub url: String,
+    pub position: Position,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct Position {
     x: i32,
     y: i32,
@@ -45,17 +59,40 @@ impl Position {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Count {
-    pub value: i32,
-}
-
 #[derive(Debug, Clone)]
-#[cfg_attr(derive, FromRef)]
+#[cfg_attr(feature = "ssr", derive(FromRef))]
 pub struct AppState {
     #[cfg(feature = "ssr")]
-    pub count: Arc<RwLock<leptos_server_signal::ServerSignal<Count>>>,
+    pub players: Arc<RwLock<VecDeque<ServerPlayer>>>,
     pub leptos_options: LeptosOptions,
     #[cfg(feature = "ssr")]
     pub routes: Vec<RouteListing>,
+}
+
+/// Messages from frontend to backend
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Message {
+    SetPosition {
+        player_idx: usize,
+        new_position: Position,
+    },
+    GetAllPlayers,
+    NewPlayer {
+        src_url: String,
+        position: Position,
+    },
+}
+
+/// Events from backend to frontend
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Event {
+    AllPlayers(VecDeque<ServerPlayer>),
+    NewPlayer {
+        src_url: String,
+        position: Position,
+    },
+    PositionUpdated {
+        player_idx: usize,
+        new_position: Position,
+    },
 }

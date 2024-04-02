@@ -22,7 +22,10 @@
           
           nativeBuildInputs = [ ];
           
-          buildInputs = [ ];
+          buildInputs = with pkgs; [
+            openssl
+            pkg-config
+          ];
         };
 
       formatter.x86_64-linux = legacyPackages.${system}.nixpkgs-fmt;
