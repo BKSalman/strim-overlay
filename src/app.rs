@@ -103,11 +103,15 @@ fn HomePage() -> impl IntoView {
         }
     };
 
-    let get_all_players = move || {
-        websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+    let get_all_players = {
+        let websocket = websocket.clone();
+        move || {
+            websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+        }
     };
 
     view! {
+        <h1>{move || format!("State: {}", websocket.ready_state.get())}</h1>
         <button on:click={
             let new_player = new_player.clone();
             move |_| new_player(src_url(), 100, 100)
@@ -254,8 +258,8 @@ fn Players() -> impl IntoView {
                 style="position: absolute; box-sizing: border-box;"
                 style:left=move || format!("{}px", player.position.get().x)
                 style:top=move || format!("{}px", player.position.get().y)
-                style:width=move || format!("{}px", current_size().0)
-                style:height=move || format!("{}px", current_size().1)
+                // style:width=move || format!("{}px", current_size().0)
+                // style:height=move || format!("{}px", current_size().1)
                 style:border= move || {
                     if resize_click() || move_click() {
                         format!("3px solid black")

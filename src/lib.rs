@@ -64,6 +64,8 @@ impl Position {
 pub struct AppState {
     #[cfg(feature = "ssr")]
     pub players: Arc<RwLock<VecDeque<ServerPlayer>>>,
+    #[cfg(feature = "ssr")]
+    pub broadcaster: tokio::sync::broadcast::Sender<Event>,
     pub leptos_options: LeptosOptions,
     #[cfg(feature = "ssr")]
     pub routes: Vec<RouteListing>,
@@ -84,7 +86,7 @@ pub enum Message {
 }
 
 /// Events from backend to frontend
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
     AllPlayers(VecDeque<ServerPlayer>),
     NewPlayer {
