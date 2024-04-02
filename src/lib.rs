@@ -30,6 +30,8 @@ pub fn hydrate() {
 pub struct Player {
     pub url: RwSignal<String>,
     pub position: RwSignal<Position>,
+    pub width: RwSignal<i32>,
+    pub height: RwSignal<i32>,
 }
 
 impl From<ServerPlayer> for Player {
@@ -37,6 +39,8 @@ impl From<ServerPlayer> for Player {
         Self {
             url: RwSignal::new(value.url),
             position: RwSignal::new(value.position),
+            width: RwSignal::new(value.width),
+            height: RwSignal::new(value.height),
         }
     }
 }
@@ -45,6 +49,8 @@ impl From<ServerPlayer> for Player {
 pub struct ServerPlayer {
     pub url: String,
     pub position: Position,
+    pub width: i32,
+    pub height: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -65,7 +71,7 @@ pub struct AppState {
     #[cfg(feature = "ssr")]
     pub players: Arc<RwLock<VecDeque<ServerPlayer>>>,
     #[cfg(feature = "ssr")]
-    pub broadcaster: tokio::sync::broadcast::Sender<Event>,
+    pub broadcaster: tokio::sync::broadcast::Sender<(u32, Event)>,
     pub leptos_options: LeptosOptions,
     #[cfg(feature = "ssr")]
     pub routes: Vec<RouteListing>,
@@ -78,10 +84,17 @@ pub enum Message {
         player_idx: usize,
         new_position: Position,
     },
+    SetSize {
+        player_idx: usize,
+        width: i32,
+        height: i32,
+    },
     GetAllPlayers,
     NewPlayer {
         src_url: String,
         position: Position,
+        width: i32,
+        height: i32,
     },
 }
 
@@ -89,12 +102,14 @@ pub enum Message {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
     AllPlayers(VecDeque<ServerPlayer>),
-    NewPlayer {
-        src_url: String,
-        position: Position,
-    },
+    NewPlayer(ServerPlayer),
     PositionUpdated {
         player_idx: usize,
         new_position: Position,
+    },
+    SizeUpdated {
+        player_idx: usize,
+        new_width: i32,
+        new_height: i32,
     },
 }

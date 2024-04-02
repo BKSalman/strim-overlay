@@ -92,11 +92,13 @@ fn HomePage() -> impl IntoView {
 
     let new_player = {
         let websocket = websocket.clone();
-        move |src_url, x, y| {
+        move |src_url, x, y, width, height| {
             websocket.send(
                 bincode::serialize(&Message::NewPlayer {
                     src_url,
                     position: Position::new(x, y),
+                    width,
+                    height,
                 })
                 .unwrap(),
             );
@@ -114,16 +116,15 @@ fn HomePage() -> impl IntoView {
         <h1>{move || format!("State: {}", websocket.ready_state.get())}</h1>
         <button on:click={
             let new_player = new_player.clone();
-            move |_| new_player(src_url(), 100, 100)
+            move |_| new_player(src_url(), 100, 100, 500, 500)
         }>"New player"</button>
         <input on:input=move |event| {
             let value = event_target_value(&event);
-            logging::log!("changed: {value}");
             set_src_url(value);
         } value=move || src_url()/>
         <button on:click={
             let new_player = new_player.clone();
-            move |_| new_player(String::from("sugoi.webm"), 200, 200)
+            move |_| new_player(String::from("sugoi.webm"), 200, 200, 500, 500)
         }>"New player 200"</button>
         <button on:click=move |_| get_all_players()
         >"All players"</button>
@@ -158,24 +159,16 @@ fn Players() -> impl IntoView {
                     leptos::with_owner(owner, || {
                         let local_players = incoming_players
                             .into_iter()
-                            .map(|p| Player {
-                                url: RwSignal::new(p.url),
-                                position: RwSignal::new(p.position),
-                            })
+                            .map(|p| Player::from(p))
                             .collect();
-                        // logging::log!("local players: {local_players:?}");
                         set_players.set(local_players);
                     });
                 }
-                Event::NewPlayer { src_url, position } => {
+                Event::NewPlayer(player) => {
                     leptos::with_owner(owner, || {
-                        let player = Player {
-                            url: RwSignal::new(src_url),
-                            position: RwSignal::new(position),
-                        };
+                        let player = Player::from(player);
                         set_players.update(|players| {
                             players.push_back(player);
-                            // logging::log!("players after adding new player: {players:?}");
                         });
                     });
                 }
@@ -190,17 +183,44 @@ fn Players() -> impl IntoView {
                         .unwrap();
 
                     player.position.set(new_position);
-                    // logging::log!("updated player: {player:?}");
+                }),
+                Event::SizeUpdated {
+                    player_idx,
+                    new_width,
+                    new_height,
+                } => set_players.update(|players| {
+                    let (_, player) = players
+                        .iter_mut()
+                        .enumerate()
+                        .find(|(i, _p)| *i == player_idx)
+                        .unwrap();
+
+                    player.width.set(new_width);
+                    player.height.set(new_height);
+                    logging::log!("server changed size");
                 }),
             }
         }
     });
 
-    let set_position = move |player_idx: usize, x: i32, y: i32| {
-        let message = Message::SetPosition {
+    let set_position = {
+        let websocket = websocket.clone();
+        move |player_idx: usize, x: i32, y: i32| {
+            let message = Message::SetPosition {
+                player_idx,
+                new_position: Position { x, y },
+            };
+            websocket.send(bincode::serialize(&message).unwrap());
+        }
+    };
+
+    let send_set_size = move |player_idx: usize, width: i32, height: i32| {
+        let message = Message::SetSize {
             player_idx,
-            new_position: Position { x, y },
+            width,
+            height,
         };
+        logging::log!("sending: {message:?}");
         websocket.send(bincode::serialize(&message).unwrap());
     };
 
@@ -210,7 +230,6 @@ fn Players() -> impl IntoView {
 
     let (initial_xy, set_initial_xy) = create_signal((0., 0.));
     let (initial_size, set_initial_size) = create_signal((200., 200.));
-    let (current_size, set_current_size) = create_signal((200., 200.));
 
     view! {
           <For
@@ -231,6 +250,7 @@ fn Players() -> impl IntoView {
                 }
                 on:mousemove={
                     let set_position = set_position.clone();
+                    let send_set_size = send_set_size.clone();
                     move |event| {
                     if move_click() {
                         player.position.update(|pos| {
@@ -239,12 +259,14 @@ fn Players() -> impl IntoView {
                             set_position(i, pos.x, pos.y);
                         });
                     } else if resize_click() {
-                        set_current_size.update(|current_size| {
-                            let initial = initial_size();
-                            current_size.0 = initial.0 + event.client_x() as f64 - initial_xy().0;
-                            current_size.1 = initial.1 + event.client_y() as f64 - initial_xy().1;
+                        let initial = initial_size();
+                        player.width.update(|current_width| {
+                            *current_width = (initial.0 + event.client_x() as f64 - initial_xy().0) as i32;
                         });
-                        logging::log!("{:?}", current_size.get_untracked());
+                        player.height.update(|current_height| {
+                            *current_height = (initial.1 + event.client_y() as f64 - initial_xy().1) as i32;
+                        });
+                        send_set_size(i, player.width.get_untracked(), player.height.get_untracked());
                     }
                 }}
                 on:mouseup=move |_event| {
@@ -258,8 +280,8 @@ fn Players() -> impl IntoView {
                 style="position: absolute; box-sizing: border-box;"
                 style:left=move || format!("{}px", player.position.get().x)
                 style:top=move || format!("{}px", player.position.get().y)
-                // style:width=move || format!("{}px", current_size().0)
-                // style:height=move || format!("{}px", current_size().1)
+                style:width=move || format!("{}px", player.width.get())
+                style:height=move || format!("{}px", player.height.get())
                 style:border= move || {
                     if resize_click() || move_click() {
                         format!("3px solid black")

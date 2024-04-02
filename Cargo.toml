@@ -28,6 +28,8 @@ scraper = { version = "0.19.0", optional = true }
 reqwest = { version = "0.12.2", features = ["rustls-tls", "json"], optional = true }
 serde_json = { version = "1.0.115", optional = true }
 url = { version = "2.5.0", optional = true }
+base64 = { version = "0.22.0", optional = true }
+anyhow = "1.0.81"
 
 [features]
 default = ["ssr"]
@@ -42,13 +44,15 @@ ssr = [
     "dep:serde_json",
     "dep:url",
     "dep:reqwest",
+    "dep:tracing",
+    "dep:base64",
     "leptos/ssr",
     "leptos_meta/ssr",
     "leptos_router/ssr",
     "leptos-use/axum",
     "leptos-use/ssr",
     "axum/ws",
-    "dep:tracing",
+    "tokio/process",
 ]
 
 # Defines a size-optimized profile for the WASM bundle in release mode

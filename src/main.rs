@@ -42,7 +42,7 @@ cfg_if::cfg_if! {
             let addr = leptos_options.site_addr;
             let routes = generate_route_list(strim_overlay::app::App);
 
-            let (sender, _receiver) = tokio::sync::broadcast::channel::<strim_overlay::Event>(1024);
+            let (sender, _receiver) = tokio::sync::broadcast::channel::<(u32, strim_overlay::Event)>(1024);
 
             let state = AppState {
                 routes: routes.clone(),
@@ -50,6 +50,7 @@ cfg_if::cfg_if! {
                 players: std::sync::Arc::new(tokio::sync::RwLock::new(VecDeque::new())),
                 broadcaster: sender,
             };
+
             let app = Router::new()
                 .route(
                     "/api/*fn_name",

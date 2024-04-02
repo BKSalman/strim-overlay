@@ -2,11 +2,26 @@ use leptos::*;
 
 #[cfg(feature = "ssr")]
 pub mod ssr {
+    use std::{collections::VecDeque, io::Write};
+
     use crate::{Event, Message as OverlayMessage, ServerPlayer};
     use axum::extract::{ws::Message, State};
+    use base64::Engine;
     use leptos::*;
 
     use crate::AppState;
+
+    fn next_id() -> u32 {
+        static mut CURRENT_ID: u32 = 0;
+
+        unsafe {
+            let current_id = CURRENT_ID;
+
+            CURRENT_ID += 1;
+
+            return current_id;
+        }
+    }
 
     pub async fn websocket(
         State(state): State<AppState>,
@@ -16,14 +31,12 @@ pub mod ssr {
     }
 
     async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: AppState) {
+        let socket_id = next_id();
         let mut broadcast_receiver = state.broadcaster.subscribe();
-        let mut skip_event = None;
         loop {
             tokio::select! {
-                Ok(event) = broadcast_receiver.recv() => {
-                    #[allow(unused)]
-                    if matches!(skip_event, Some(ref event)) {
-                        skip_event = None;
+                Ok((sender_id, event)) = broadcast_receiver.recv() => {
+                    if sender_id == socket_id {
                         continue;
                     }
                     let event = bincode::serialize(&event).unwrap();
@@ -51,79 +64,19 @@ pub mod ssr {
                                             new_position: player.position.clone(),
                                         };
 
-                                        let _ = state.broadcaster.send(event.clone());
-                                        skip_event = Some(event.clone());
+                                        let _ = state.broadcaster.send((socket_id, event.clone()));
 
                                         let event = bincode::serialize(&event).unwrap();
                                         let _ = socket.send(Message::Binary(event)).await;
                                     }
-                                    OverlayMessage::NewPlayer { src_url, position } => {
-                                        if src_url == "sugoi.webm" {
-                                            let player = ServerPlayer {
-                                                url: src_url,
-                                                position,
-                                            };
-
-                                            logging::log!("adding new player {player:?}");
-
-                                            let event = Event::NewPlayer {
-                                                src_url: player.url.clone(),
-                                                position: player.position.clone(),
-                                            };
-
-                                            let _ = state.broadcaster.send(event.clone());
-                                            skip_event = Some(event.clone());
-
-                                            let event = bincode::serialize(&event).unwrap();
-                                            let _ = socket.send(Message::Binary(event)).await;
-                                            state.players.write().await.push_back(player);
-                                            continue;
-                                        }
-                                        if let Ok(url) = url::Url::parse(&src_url) {
-                                            let src_url = match url.host_str() {
-                                                Some("twitch.tv")
-                                                | Some("www.twitch.tv")
-                                                | Some("clips.twitch.tv") => {
-                                                    logging::log!("received twitch clip");
-
-                                                    twitch_clip_src_url(url).await
-                                                }
-                                                _ => {
-                                                    logging::log!(
-                                                        "not a supported URL: {:?}",
-                                                        url.host_str()
-                                                    );
-                                                    None
-                                                }
-                                            };
-
-                                            let Some(src_url) = src_url else {
-                                                continue;
-                                            };
-
-                                            logging::log!("src url: {src_url}");
-
-                                            let player = ServerPlayer {
-                                                url: src_url,
-                                                position,
-                                            };
-
-                                            logging::log!("adding new player {player:?}");
-
-                                            let event = Event::NewPlayer {
-                                                src_url: player.url.clone(),
-                                                position: player.position.clone(),
-                                            };
-
-                                            let _ = state.broadcaster.send(event.clone());
-                                            skip_event = Some(event.clone());
-
-                                            let event = bincode::serialize(&event)
-                                            .unwrap();
-                                            let _ = socket.send(Message::Binary(event)).await;
-                                            state.players.write().await.push_back(player);
-                                        }
-                                    }
+                                    OverlayMessage::NewPlayer { src_url, position, width, height } => {
+                                        add_new_player(socket_id,
+                                            state.broadcaster.clone(),
+                                            src_url, position, width,
+                                            height, &mut socket,
+                                            state.players.clone()
+                                        ).await.unwrap()
+                                    },
                                     OverlayMessage::GetAllPlayers => {
                                         logging::log!("Received request for all players");
                                         let event = bincode::serialize(&Event::AllPlayers(
@@ -132,6 +85,25 @@ pub mod ssr {
                                         .unwrap();
                                         let _ = socket.send(Message::Binary(event)).await;
                                     }
+                                    OverlayMessage::SetSize { player_idx, width, height } => {
+                                        let mut players = state.players.write().await;
+                                        let (i, player) = players.iter_mut().enumerate().find(|(i, _p)| *i == player_idx).unwrap();
+
+                                        player.width = width;
+                                        player.height = height;
+
+                                        let event = Event::SizeUpdated {
+                                            player_idx: i,
+                                            new_width: player.width,
+                                            new_height: player.height,
+                                        };
+
+                                        let _ = state.broadcaster.send((socket_id, event.clone()));
+
+                                        let event = bincode::serialize(&event).unwrap();
+
+                                        let _ = socket.send(Message::Binary(event)).await;
+                                    },
                                 },
                                 Err(e) => logging::error!("{e}"),
                             }
@@ -145,6 +117,72 @@ pub mod ssr {
                 }
             }
         }
+    }
+
+    async fn add_new_player(
+        socket_id: u32,
+        broadcaster: tokio::sync::broadcast::Sender<(u32, Event)>,
+        src_url: String,
+        position: crate::Position,
+        width: i32,
+        height: i32,
+        socket: &mut axum::extract::ws::WebSocket,
+        players: std::sync::Arc<tokio::sync::RwLock<VecDeque<ServerPlayer>>>,
+    ) -> anyhow::Result<()> {
+        if src_url == "sugoi.webm" {
+            let player = ServerPlayer {
+                url: src_url,
+                position,
+                width,
+                height,
+            };
+
+            logging::log!("adding new player {player:?}");
+
+            let event = Event::NewPlayer(player.clone());
+
+            let _ = broadcaster.send((socket_id, event.clone()));
+
+            let event = bincode::serialize(&event).unwrap();
+            let _ = socket.send(Message::Binary(event)).await;
+            players.write().await.push_back(player);
+            return Ok(());
+        }
+
+        if let Ok(url) = url::Url::parse(&src_url) {
+            let src_url = match url.host_str() {
+                Some("twitch.tv") | Some("www.twitch.tv") | Some("clips.twitch.tv") => {
+                    logging::log!("received twitch clip");
+
+                    twitch_clip_src_url(url).await
+                }
+                _ => {
+                    logging::log!("not a supported URL: {:?}", url.host_str());
+                    None
+                }
+            };
+
+            let Some(src_url) = src_url else {
+                return Ok(());
+            };
+
+            let player = ServerPlayer {
+                url: src_url,
+                position,
+                width,
+                height,
+            };
+
+            let event = Event::NewPlayer(player.clone());
+
+            let _ = broadcaster.send((socket_id, event.clone()));
+
+            let event = bincode::serialize(&event).unwrap();
+            let _ = socket.send(Message::Binary(event)).await;
+            players.write().await.push_back(player);
+        }
+
+        Ok(())
     }
 
     async fn twitch_clip_src_url(url: url::Url) -> Option<String> {
@@ -222,7 +260,41 @@ pub mod ssr {
             "{download_link}?sig={signature}&{form}",
             signature = playback_access_token["signature"].as_str().unwrap(),
         );
-        Some(src_url)
+
+        let mut clip_bytes = reqwest::get(&src_url).await.unwrap().bytes().await.unwrap();
+
+        let temp_dir = std::env::temp_dir().join("strim-overlay");
+
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        logging::log!("{}", temp_dir.display());
+
+        let download_link = url::Url::parse(&download_link).unwrap();
+
+        let file_name = download_link.path_segments().unwrap().last().unwrap();
+
+        let temp_file_path = temp_dir.join(&file_name);
+        logging::log!("{}", temp_file_path.display());
+
+        if let Ok(data) = std::fs::read(&temp_file_path.with_extension("webm")) {
+            let base64 = base64::engine::general_purpose::STANDARD.encode(&data);
+            Some(format!("data:video/webm;base64,{base64}"))
+        } else {
+            let mut temp_file = std::fs::File::create(&temp_file_path).unwrap();
+
+            temp_file.write_all(&mut clip_bytes).unwrap();
+
+            let temp_file_path_str = temp_file_path.display().to_string();
+
+            let temp_file_path_out = temp_file_path.with_extension("webm").display().to_string();
+
+            tokio::process::Command::new("ffmpeg")
+                .args(["-i", &temp_file_path_str, &temp_file_path_out])
+                .spawn()
+                .unwrap();
+
+            Some(std::fs::read_to_string(temp_file_path_out).unwrap())
+        }
     }
 }
 
