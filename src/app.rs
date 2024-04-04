@@ -12,8 +12,8 @@ use leptos::{
 use leptos_meta::*;
 use leptos_router::*;
 use leptos_use::{
-    core::ConnectionReadyState, use_element_size, use_websocket, UseElementSizeReturn,
-    UseWebsocketReturn,
+    core::ConnectionReadyState, use_element_size, use_event_listener, use_websocket, use_window,
+    UseElementSizeReturn, UseWebsocketReturn,
 };
 use std::rc::Rc;
 
@@ -176,6 +176,8 @@ fn Players() -> impl IntoView {
     let (players, set_players) = create_signal(VecDeque::<Player>::new());
     let (move_click, set_move_click) = create_signal(false);
     let (resize_click, set_resize_click) = create_signal(false);
+    let (canvas_move_click, set_canvas_move_click) = create_signal(false);
+    let (canvas_position, set_canvas_position) = create_signal((0, 0));
 
     let websocket = expect_context::<WebsocketContext>();
 
@@ -295,60 +297,101 @@ fn Players() -> impl IntoView {
         }
     };
 
+    let _ = use_event_listener(use_window(), leptos::ev::mousedown, move |_event| {
+        set_canvas_move_click(true);
+    });
+
+    let _ = use_event_listener(use_window(), leptos::ev::mousemove, move |event| {
+        if canvas_move_click() {
+            set_canvas_position.update(|current_pos| {
+                current_pos.0 += event.movement_x();
+                current_pos.1 += event.movement_y();
+            });
+        }
+    });
+
+    let _ = use_event_listener(use_window(), leptos::ev::mouseup, move |_event| {
+        set_canvas_move_click(false);
+    });
+
+    let _ = use_event_listener(use_window(), leptos::ev::mouseleave, move |_event| {
+        set_canvas_move_click(false);
+    });
+
+    // TODO: add canvas zoom
+    // for now the browser zoom is not a bad solution
+    // let _ = use_event_listener(use_window(), leptos::ev::wheel, move |event| {
+    //     if event.delta_y() > 0. {
+    //         set_canvas_zoom.update_untracked(|current_zoom| {
+    //             *current_zoom += 0.01;
+    //         });
+    //     } else {
+    //         set_canvas_zoom.update_untracked(|current_zoom| {
+    //             *current_zoom -= 0.01;
+    //         });
+    //     }
+    // });
+
     view! {
-          <For
-            each=move || players().into_iter().enumerate()
-            key=|(i, _)| *i
-            children=move |(i, player): (usize, Player)| {
-              view! {
-                <div
-                on:mousedown=move |event| {
-                    event.prevent_default();
-                    if event.ctrl_key() {
-                        set_resize_click(true);
-                        set_initial_size((width.get_untracked(), height.get_untracked()));
-                        set_initial_xy((event.client_x() as f64, event.client_y() as f64));
-                    } else {
-                        set_move_click(true);
-                    }
-                }
-                on:mousemove={
-                    let move_mouse = move_mouse.clone();
-                    move |event| move_mouse(player.width, player.height, player.position, i, event)
-                }
-                on:mouseup=move |_event| {
-                    set_move_click(false);
-                    set_resize_click(false);
-                }
-                on:mouseleave=move |_| {
-                    set_move_click(false);
-                    set_resize_click(false);
-                }
-                style="position: absolute; box-sizing: border-box;"
-                style:left=move || format!("{}px", player.position.get().x)
-                style:top=move || format!("{}px", player.position.get().y)
-                style:width=move || format!("{}px", player.width.get())
-                style:height=move || format!("{}px", player.height.get())
-                style:border= move || {
-                    if resize_click() || move_click() {
-                        format!("3px solid black")
-                    } else {
-                        String::new()
-                    }
-                }
-                node_ref=div
-                >{move || {
-                    let file_type = player.file_type.get();
-                    if file_type.starts_with("video") {
-                        view! {<video style="width: 100%; height: 100%;" autoplay loop src=player.url.get()></video>}.into_view()
-                    } else if file_type.starts_with("image") {
-                        view! {<img style="width: 100%; height: 100%;" autoplay loop src=player.url.get()></img>}.into_view()
-                    } else {
-                        view! {}.into_view()
-                    }
-                } }</div>
+        <For
+          each=move || players().into_iter().enumerate()
+          key=|(i, _)| *i
+          children=move |(i, player): (usize, Player)| {
+            view! {
+              <div
+              on:mousedown=move |event| {
+                  set_canvas_move_click(false);
+                  event.prevent_default();
+                  if event.ctrl_key() {
+                      set_resize_click(true);
+                      set_initial_size((width.get_untracked(), height.get_untracked()));
+                      set_initial_xy((event.client_x() as f64, event.client_y() as f64));
+                  } else {
+                      set_move_click(true);
+                  }
               }
+              on:mousemove={
+                  let move_mouse = move_mouse.clone();
+                  move |event| move_mouse(player.width, player.height, player.position, i, event)
+              }
+              on:mouseup=move |_event| {
+                  set_move_click(false);
+                  set_resize_click(false);
+              }
+              on:mouseleave=move |_| {
+                  set_move_click(false);
+                  set_resize_click(false);
+              }
+              style="position: absolute; z-index: 2; box-sizing: border-box;"
+              style:left=move || format!("{}px", player.position.get().x + canvas_position().0)
+              style:top=move || format!("{}px", player.position.get().y + canvas_position().1)
+              style:width=move || format!("{}px", player.width.get())
+              style:height=move || format!("{}px", player.height.get())
+              style:border= move || {
+                  if resize_click() || move_click() {
+                      format!("3px solid black")
+                  } else {
+                      String::new()
+                  }
+              }
+              node_ref=div
+              >{move || {
+                  let file_type = player.file_type.get();
+                  if file_type.starts_with("video") {
+                      view! {<video style="width: 100%; height: 100%;" autoplay loop src=player.url.get()></video>}.into_view()
+                  } else if file_type.starts_with("image") {
+                      view! {<img style="width: 100%; height: 100%;" autoplay loop src=player.url.get()></img>}.into_view()
+                  } else {
+                      view! {}.into_view()
+                  }
+              } }</div>
             }
-          />
+          }
+        />
+        <div
+            style="z-index: -5000; border: 3px solid black; position: absolute; width: 2560px; height: 1440px;"
+            style:left=move || format!("{}px", canvas_position().0)
+            style:top=move || format!("{}px", canvas_position().1)
+        ></div>
     }
 }
