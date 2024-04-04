@@ -2750,6 +2750,7 @@ dependencies = [
  "tracing",
  "url",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

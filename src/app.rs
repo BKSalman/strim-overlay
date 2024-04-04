@@ -4,7 +4,11 @@ use crate::{
     error_template::{AppError, ErrorTemplate},
     Event, Message, Player, Position,
 };
-use leptos::{html::Div, *};
+use base64::Engine;
+use leptos::{
+    html::{Div, Input},
+    *,
+};
 use leptos_meta::*;
 use leptos_router::*;
 use leptos_use::{
@@ -92,10 +96,11 @@ fn HomePage() -> impl IntoView {
 
     let new_player = {
         let websocket = websocket.clone();
-        move |src_url, x, y, width, height| {
+        move |src_url, file_type, x, y, width, height| {
             websocket.send(
                 bincode::serialize(&Message::NewPlayer {
                     src_url,
+                    file_type,
                     position: Position::new(x, y),
                     width,
                     height,
@@ -112,20 +117,53 @@ fn HomePage() -> impl IntoView {
         }
     };
 
+    let input_element: NodeRef<Input> = create_node_ref();
+    let on_file_submit = {
+        let new_player = new_player.clone();
+        move |_event: leptos::ev::MouseEvent| {
+            if let Some(files) = input_element.get().unwrap().files() {
+                for i in 0..files.length() {
+                    if let Some(file) = files.item(i) {
+                        logging::log!("file: {file:?}");
+                        //     // if file.type_() != "video/webm" {
+                        //     //     continue;
+                        //     // }
+                        let new_player = new_player.clone();
+                        spawn_local(async move {
+                            if let Ok(file_data) =
+                                wasm_bindgen_futures::JsFuture::from(file.array_buffer()).await
+                            {
+                                let data =
+                                    wasm_bindgen_futures::js_sys::Uint8Array::new(&file_data)
+                                        .to_vec();
+                                let base64 =
+                                    base64::engine::general_purpose::STANDARD.encode(&data);
+
+                                let src = if file.type_() == "video/webm" {
+                                    format!("data:video/webm;base64,{base64}")
+                                } else if file.type_() == "image/gif" {
+                                    format!("data:image/gif;base64,{base64}")
+                                } else {
+                                    return;
+                                };
+
+                                new_player(src, file.type_(), 100, 100, 500, 500);
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    };
+
     view! {
         <h1>{move || format!("State: {}", websocket.ready_state.get())}</h1>
-        <button on:click={
-            let new_player = new_player.clone();
-            move |_| new_player(src_url(), 100, 100, 500, 500)
-        }>"New player"</button>
+        <button on:click=on_file_submit>"New player"</button>
+        <input type="file" accept="video/webm,image/gif" node_ref=input_element></input>
         <input on:input=move |event| {
             let value = event_target_value(&event);
             set_src_url(value);
         } value=move || src_url()/>
-        <button on:click={
-            let new_player = new_player.clone();
-            move |_| new_player(String::from("sugoi.webm"), 200, 200, 500, 500)
-        }>"New player 200"</button>
         <button on:click=move |_| get_all_players()
         >"All players"</button>
         <Players/>
@@ -231,6 +269,32 @@ fn Players() -> impl IntoView {
     let (initial_xy, set_initial_xy) = create_signal((0., 0.));
     let (initial_size, set_initial_size) = create_signal((200., 200.));
 
+    let move_mouse = move |width: RwSignal<i32>,
+                           height: RwSignal<i32>,
+                           position: RwSignal<Position>,
+                           i: usize,
+                           event: leptos::ev::MouseEvent| {
+        let set_position = set_position.clone();
+        let send_set_size = send_set_size.clone();
+        event.prevent_default();
+        if move_click() {
+            position.update(|pos| {
+                pos.x += event.movement_x();
+                pos.y += event.movement_y();
+                set_position(i, pos.x, pos.y);
+            });
+        } else if resize_click() {
+            let initial = initial_size();
+            width.update(|current_width| {
+                *current_width = (initial.0 + event.client_x() as f64 - initial_xy().0) as i32;
+            });
+            height.update(|current_height| {
+                *current_height = (initial.1 + event.client_y() as f64 - initial_xy().1) as i32;
+            });
+            send_set_size(i, width.get_untracked(), height.get_untracked());
+        }
+    };
+
     view! {
           <For
             each=move || players().into_iter().enumerate()
@@ -239,8 +303,8 @@ fn Players() -> impl IntoView {
               view! {
                 <div
                 on:mousedown=move |event| {
+                    event.prevent_default();
                     if event.ctrl_key() {
-                        event.prevent_default();
                         set_resize_click(true);
                         set_initial_size((width.get_untracked(), height.get_untracked()));
                         set_initial_xy((event.client_x() as f64, event.client_y() as f64));
@@ -249,26 +313,9 @@ fn Players() -> impl IntoView {
                     }
                 }
                 on:mousemove={
-                    let set_position = set_position.clone();
-                    let send_set_size = send_set_size.clone();
-                    move |event| {
-                    if move_click() {
-                        player.position.update(|pos| {
-                            pos.x += event.movement_x();
-                            pos.y += event.movement_y();
-                            set_position(i, pos.x, pos.y);
-                        });
-                    } else if resize_click() {
-                        let initial = initial_size();
-                        player.width.update(|current_width| {
-                            *current_width = (initial.0 + event.client_x() as f64 - initial_xy().0) as i32;
-                        });
-                        player.height.update(|current_height| {
-                            *current_height = (initial.1 + event.client_y() as f64 - initial_xy().1) as i32;
-                        });
-                        send_set_size(i, player.width.get_untracked(), player.height.get_untracked());
-                    }
-                }}
+                    let move_mouse = move_mouse.clone();
+                    move |event| move_mouse(player.width, player.height, player.position, i, event)
+                }
                 on:mouseup=move |_event| {
                     set_move_click(false);
                     set_resize_click(false);
@@ -290,7 +337,16 @@ fn Players() -> impl IntoView {
                     }
                 }
                 node_ref=div
-                ><video style="width: 100%; height: 100%;" autoplay loop src=player.url.get()></video></div>
+                >{move || {
+                    let file_type = player.file_type.get();
+                    if file_type.starts_with("video") {
+                        view! {<video style="width: 100%; height: 100%;" autoplay loop src=player.url.get()></video>}.into_view()
+                    } else if file_type.starts_with("image") {
+                        view! {<img style="width: 100%; height: 100%;" autoplay loop src=player.url.get()></img>}.into_view()
+                    } else {
+                        view! {}.into_view()
+                    }
+                } }</div>
               }
             }
           />

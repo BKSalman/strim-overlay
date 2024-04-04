@@ -29,6 +29,7 @@ pub fn hydrate() {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
     pub url: RwSignal<String>,
+    pub file_type: RwSignal<String>,
     pub position: RwSignal<Position>,
     pub width: RwSignal<i32>,
     pub height: RwSignal<i32>,
@@ -38,6 +39,7 @@ impl From<ServerPlayer> for Player {
     fn from(value: ServerPlayer) -> Self {
         Self {
             url: RwSignal::new(value.url),
+            file_type: RwSignal::new(value.file_type),
             position: RwSignal::new(value.position),
             width: RwSignal::new(value.width),
             height: RwSignal::new(value.height),
@@ -48,6 +50,7 @@ impl From<ServerPlayer> for Player {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerPlayer {
     pub url: String,
+    pub file_type: String,
     pub position: Position,
     pub width: i32,
     pub height: i32,
@@ -92,6 +95,7 @@ pub enum Message {
     GetAllPlayers,
     NewPlayer {
         src_url: String,
+        file_type: String,
         position: Position,
         width: i32,
         height: i32,
