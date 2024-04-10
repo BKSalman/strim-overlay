@@ -5,6 +5,7 @@ use axum::{
 };
 use leptos_axum::handle_server_fns_with_context;
 use strim_overlay::server::ssr::websocket;
+use tower_http::compression::CompressionLayer;
 
 async fn server_fn_handler(
     // State(_app_state): State<AppState>,
@@ -58,6 +59,7 @@ cfg_if::cfg_if! {
                 )
                 .route("/ws", get(websocket))
                 .leptos_routes(&state, routes, strim_overlay::app::App)
+                .route_layer(CompressionLayer::new().gzip(true))
                 .fallback(file_and_error_handler)
                 .with_state(state);
 

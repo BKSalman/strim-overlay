@@ -1,2 +1,5 @@
 # [language-server.rust-analyzer.config.rust-analyzer.cargo]
 # features = ["ssr"]
+
+[language-server.rust-analyzer.config.rustfmt]
+overrideCommand = ["leptosfmt", "--stdin", "--rustfmt"]

@@ -18,6 +18,8 @@
             (rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
             cargo-leptos
             sass
+            leptosfmt
+            binaryen # for wasm-opt
           ];
           
           nativeBuildInputs = [ ];

@@ -142,6 +142,7 @@ pub mod ssr {
             width,
             height,
         };
+        logging::log!("adding new player: {}", player.file_type);
 
         let event = Event::NewPlayer(player.clone());
 

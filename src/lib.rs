@@ -1,12 +1,4 @@
-#[cfg(feature = "ssr")]
-use axum::extract::FromRef;
-#[cfg(feature = "ssr")]
-use leptos_router::RouteListing;
 use std::collections::VecDeque;
-#[cfg(feature = "ssr")]
-use std::sync::Arc;
-#[cfg(feature = "ssr")]
-use tokio::sync::RwLock;
 
 use leptos::LeptosOptions;
 use leptos::RwSignal;
@@ -14,9 +6,18 @@ use serde::{Deserialize, Serialize};
 
 pub mod app;
 pub mod error_template;
-#[cfg(feature = "ssr")]
-pub mod fileserv;
 pub mod server;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "ssr")] {
+        use tokio::sync::RwLock;
+        use std::sync::Arc;
+        use leptos_router::RouteListing;
+        use axum::extract::FromRef;
+
+        pub mod fileserv;
+    }
+}
 
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]
