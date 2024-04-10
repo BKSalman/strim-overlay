@@ -33,7 +33,8 @@ pub struct Player {
     pub file_type: RwSignal<String>,
     pub position: RwSignal<Position>,
     pub width: RwSignal<i32>,
-    pub height: RwSignal<i32>,
+    /// None means this should keep the aspect ratio of the player and set the height to auto
+    pub height: RwSignal<Option<i32>>,
 }
 
 impl From<ServerPlayer> for Player {
@@ -54,7 +55,8 @@ pub struct ServerPlayer {
     pub file_type: String,
     pub position: Position,
     pub width: i32,
-    pub height: i32,
+    /// None means this should keep the aspect ratio of the player and set the height to auto
+    pub height: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -91,7 +93,7 @@ pub enum Message {
     SetSize {
         player_idx: usize,
         width: i32,
-        height: i32,
+        height: Option<i32>,
     },
     GetAllPlayers,
     NewPlayer {
@@ -99,7 +101,7 @@ pub enum Message {
         file_type: String,
         position: Position,
         width: i32,
-        height: i32,
+        height: Option<i32>,
     },
 }
 
@@ -115,6 +117,6 @@ pub enum Event {
     SizeUpdated {
         player_idx: usize,
         new_width: i32,
-        new_height: i32,
+        new_height: Option<i32>,
     },
 }

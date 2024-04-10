@@ -127,7 +127,7 @@ pub mod ssr {
         file_type: String,
         position: crate::Position,
         width: i32,
-        height: i32,
+        height: Option<i32>,
         socket: &mut axum::extract::ws::WebSocket,
         players: std::sync::Arc<tokio::sync::RwLock<VecDeque<ServerPlayer>>>,
     ) -> anyhow::Result<()> {
