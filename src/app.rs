@@ -13,10 +13,7 @@ use leptos::{
 use leptos_meta::*;
 use leptos_router::*;
 use leptos_use::{
-    core::ConnectionReadyState,
-    storage::use_local_storage,
-    use_element_size, use_event_listener, use_websocket, use_window,
-    utils::{FromToStringCodec, JsonCodec},
+    core::ConnectionReadyState, use_element_size, use_event_listener, use_websocket, use_window,
     UseElementSizeReturn, UseWebsocketReturn,
 };
 use serde::{Deserialize, Serialize};
@@ -106,6 +103,7 @@ fn HomePage() -> impl IntoView {
 
     let (canvas_move_click, set_canvas_move_click) = create_signal(false);
     let (canvas_position, set_canvas_position) = create_signal((0, 0));
+    let (canvas_zoom, set_canvas_zoom) = create_signal(1.0f32);
 
     let _ = use_event_listener(use_window(), leptos::ev::mousedown, move |event| {
         // 1 = middle mouse button, aka. wheel button
@@ -119,8 +117,8 @@ fn HomePage() -> impl IntoView {
         if canvas_move_click() {
             event.prevent_default();
             set_canvas_position.update(|current_pos| {
-                current_pos.0 += event.movement_x();
-                current_pos.1 += event.movement_y();
+                current_pos.0 += (event.movement_x() as f32 / canvas_zoom()) as i32;
+                current_pos.1 += (event.movement_y() as f32 / canvas_zoom()) as i32;
             });
         }
     });
@@ -137,21 +135,54 @@ fn HomePage() -> impl IntoView {
         set_canvas_move_click(false);
     });
 
+    let (ctrl_pressed, set_ctrl_pressed) = create_signal(false);
+
+    let _ = use_event_listener(use_window(), leptos::ev::keydown, move |event| {
+        if event.ctrl_key() {
+            set_ctrl_pressed(true);
+        }
+    });
+
+    let _ = use_event_listener(use_window(), leptos::ev::keyup, move |event| {
+        if !event.ctrl_key() {
+            set_ctrl_pressed(false);
+        }
+    });
+
+    // TODO: add canvas zoom. for now the browser zoom is not a bad solution
+    let _ = use_event_listener(use_window(), leptos::ev::wheel, move |event| {
+        if event.delta_y() > 0. {
+            set_canvas_zoom.update(|current_zoom| {
+                *current_zoom += 0.1;
+            });
+        } else {
+            set_canvas_zoom.update(|current_zoom| {
+                if *current_zoom - 0.1 > 0. {
+                    *current_zoom -= 0.1;
+                }
+            });
+        }
+    });
+
     view! {
         {move || {
             if show_menu() {
-                view! { <Menu canvas_position/> }.into_view()
+                view! { <Menu canvas_position canvas_zoom/> }.into_view()
             } else {
                 view! {}.into_view()
             }
         }}
 
-        <Players canvas_position/>
+        <Players canvas_position canvas_zoom ctrl_pressed/>
     }
 }
 
 #[component]
-fn Players(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
+fn Players(
+    canvas_position: ReadSignal<(i32, i32)>,
+    canvas_zoom: ReadSignal<f32>,
+    ctrl_pressed: ReadSignal<bool>,
+) -> impl IntoView {
     let owner = leptos::Owner::current().expect("there should be an owner");
     let (players, set_players) = create_signal(VecDeque::<Player>::new());
     let (move_click, set_move_click) = create_signal(false);
@@ -176,20 +207,6 @@ fn Players(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
             handle_websocket_message(websocket.clone(), owner, set_players.clone());
         });
     }
-
-    let (ctrl_pressed, set_ctrl_pressed) = create_signal(false);
-
-    let _ = use_event_listener(use_window(), leptos::ev::keydown, move |event| {
-        if event.ctrl_key() {
-            set_ctrl_pressed(true);
-        }
-    });
-
-    let _ = use_event_listener(use_window(), leptos::ev::keyup, move |event| {
-        if !event.ctrl_key() {
-            set_ctrl_pressed(false);
-        }
-    });
 
     let set_position = {
         let websocket = websocket.clone();
@@ -230,8 +247,8 @@ fn Players(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
         event.prevent_default();
         if move_click() {
             position.update(|pos| {
-                pos.x += event.movement_x();
-                pos.y += event.movement_y();
+                pos.x += (event.movement_x() as f32 / canvas_zoom()) as i32;
+                pos.y += (event.movement_y() as f32 / canvas_zoom()) as i32;
                 set_position(i, pos.x, pos.y);
             });
         } else if resize_click() {
@@ -251,19 +268,6 @@ fn Players(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
             send_set_size(i, width.get_untracked(), height.get_untracked());
         }
     };
-
-    // TODO: add canvas zoom. for now the browser zoom is not a bad solution
-    // let _ = use_event_listener(use_window(), leptos::ev::wheel, move |event| {
-    //     if event.delta_y() > 0. {
-    //         set_canvas_zoom.update_untracked(|current_zoom| {
-    //             *current_zoom += 0.01;
-    //         });
-    //     } else {
-    //         set_canvas_zoom.update_untracked(|current_zoom| {
-    //             *current_zoom -= 0.01;
-    //         });
-    //     }
-    // });
 
     let start_moving_player = move |event: MouseEvent| {
         event.prevent_default();
@@ -305,17 +309,17 @@ fn Players(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
 
                         style="position: absolute; z-index: 2; box-sizing: border-box;"
                         style:left=move || {
-                            format!("{}px", player.position.get().x + canvas_position().0)
+                            format!("{}px", (player.position.get().x + canvas_position().0) as f32 * canvas_zoom())
                         }
 
                         style:top=move || {
-                            format!("{}px", player.position.get().y + canvas_position().1)
+                            format!("{}px", (player.position.get().y + canvas_position().1) as f32 * canvas_zoom())
                         }
 
-                        style:width=move || format!("{}px", player.width.get())
+                        style:width=move || format!("{}px", player.width.get() as f32 * canvas_zoom())
                         style:height=move || {
                             if let Some(height) = player.height.get() {
-                                format!("{}px", height)
+                                format!("{}px", height as f32 * canvas_zoom())
                             } else {
                                 String::from("auto")
                             }
@@ -366,7 +370,7 @@ fn Players(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
 }
 
 #[component]
-fn Menu(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
+fn Menu(canvas_position: ReadSignal<(i32, i32)>, canvas_zoom: ReadSignal<f32>) -> impl IntoView {
     let websocket = expect_context::<WebsocketContext>();
     let (screen_size, set_screen_size) = create_signal(ScreenSize::default());
 
@@ -438,10 +442,10 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
         }>"All players"</button>
         <div
             style="z-index: -5000; border: 3px solid black; position: absolute;"
-            style:width=move || format!("{}px", screen_size().width)
-            style:height=move || format!("{}px", screen_size().height)
-            style:left=move || format!("{}px", canvas_position().0)
-            style:top=move || format!("{}px", canvas_position().1)
+            style:width=move || format!("{}px", screen_size().width as f32 * canvas_zoom())
+            style:height=move || format!("{}px", screen_size().height as f32 * canvas_zoom())
+            style:left=move || format!("{}px", canvas_position().0 as f32 * canvas_zoom())
+            style:top=move || format!("{}px", canvas_position().1 as f32 * canvas_zoom())
         >
             <p>"Screen border"</p>
             <label for="height">"Height"</label>
@@ -467,7 +471,6 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
                     }
                 }
             />
-
         </div>
     }
 }
