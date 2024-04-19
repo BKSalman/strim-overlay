@@ -58,7 +58,7 @@ pub fn App() -> impl IntoView {
         send_bytes,
         ready_state,
         ..
-    } = use_websocket("ws://127.0.0.1:3030/ws");
+    } = use_websocket("ws://100.64.0.5:3030/ws");
 
     provide_context(WebsocketContext::new(
         message_bytes,
@@ -92,7 +92,7 @@ fn HomePage() -> impl IntoView {
     let websocket = expect_context::<WebsocketContext>();
     websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
 
-    let (show_menu, set_show_menu, _) = use_local_storage::<bool, FromToStringCodec>("show_menu");
+    let (show_menu, set_show_menu) = create_signal(false);
 
     let _ = use_event_listener(use_window(), leptos::ev::contextmenu, move |event| {
         event.prevent_default();
@@ -252,8 +252,7 @@ fn Players(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
         }
     };
 
-    // TODO: add canvas zoom
-    // for now the browser zoom is not a bad solution
+    // TODO: add canvas zoom. for now the browser zoom is not a bad solution
     // let _ = use_event_listener(use_window(), leptos::ev::wheel, move |event| {
     //     if event.delta_y() > 0. {
     //         set_canvas_zoom.update_untracked(|current_zoom| {
@@ -369,10 +368,7 @@ fn Players(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
 #[component]
 fn Menu(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
     let websocket = expect_context::<WebsocketContext>();
-    let (screen_size, set_screen_size, _) =
-        use_local_storage::<ScreenSize, JsonCodec>("screen_width");
-
-    let (src_url, set_src_url) = create_signal(String::new());
+    let (screen_size, set_screen_size) = create_signal(ScreenSize::default());
 
     let new_player = {
         let websocket = websocket.clone();
@@ -404,7 +400,7 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
             if let Some(files) = input_element.get().unwrap().files() {
                 for i in 0..files.length() {
                     if let Some(file) = files.item(i) {
-                        if file.type_() != "video/webm" && file.type_() != "image/gif" {
+                        if file.type_() != "video/webm" && !file.type_().starts_with("image") {
                             continue;
                         }
                         let new_player = new_player.clone();
@@ -418,13 +414,7 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
                                 let base64 =
                                     base64::engine::general_purpose::STANDARD.encode(&data);
 
-                                let src = if file.type_() == "video/webm" {
-                                    format!("data:video/webm;base64,{base64}")
-                                } else if file.type_() == "image/gif" {
-                                    format!("data:image/gif;base64,{base64}")
-                                } else {
-                                    return;
-                                };
+                                let src = format!("data:{};base64,{base64}", file.type_());
 
                                 new_player(src, file.type_(), 100, 100, 500, None);
                             }
@@ -441,15 +431,7 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
             let on_file_submit = on_file_submit.clone();
             move |_event| on_file_submit()
         }>"New player"</button>
-        <input type="file" accept="video/webm,image/gif" node_ref=input_element/>
-        <input
-            on:input=move |event| {
-                let value = event_target_value(&event);
-                set_src_url(value);
-            }
-
-            value=move || src_url()
-        />
+        <input type="file" accept="video/webm,image/*" node_ref=input_element/>
         <button on:click={
             let get_all_players = get_all_players.clone();
             move |_| get_all_players()
@@ -468,10 +450,9 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
                 type="number"
                 value=move || screen_size().height
                 on:input=move |event| {
-                    set_screen_size
-                        .update(|size| {
-                            size.height = event_target_value(&event).parse::<i32>().unwrap();
-                        })
+                    if let Ok(new_height) = event_target_value(&event).parse::<i32>() {
+                        set_screen_size.update(|size| size.height = new_height);
+                    }
                 }
             />
 
@@ -481,10 +462,9 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>) -> impl IntoView {
                 type="number"
                 value=move || screen_size().width
                 on:input=move |event| {
-                    set_screen_size
-                        .update(|size| {
-                            size.width = event_target_value(&event).parse::<i32>().unwrap();
-                        })
+                    if let Ok(new_width) = event_target_value(&event).parse::<i32>() {
+                        set_screen_size.update(|size| size.width = new_width);
+                    }
                 }
             />
 
@@ -501,8 +481,8 @@ pub struct ScreenSize {
 impl Default for ScreenSize {
     fn default() -> Self {
         Self {
-            width: 1920,
-            height: 1080,
+            width: 2560,
+            height: 1440,
         }
     }
 }

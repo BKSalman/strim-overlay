@@ -131,7 +131,7 @@ pub mod ssr {
         socket: &mut axum::extract::ws::WebSocket,
         players: std::sync::Arc<tokio::sync::RwLock<VecDeque<ServerPlayer>>>,
     ) -> anyhow::Result<()> {
-        if file_type != "video/webm" && file_type != "image/gif" {
+        if file_type != "video/webm" && !file_type.starts_with("image") {
             return Ok(());
         }
 

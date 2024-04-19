@@ -7,6 +7,18 @@ use leptos_axum::handle_server_fns_with_context;
 use strim_overlay::server::ssr::websocket;
 use tower_http::compression::CompressionLayer;
 
+cfg_if::cfg_if! {
+    if #[cfg(feature = "ssr")] {
+        use std::collections::VecDeque;
+
+        use axum::{
+            routing::{get, post},
+            Router,
+        };
+        use leptos::*;
+        use leptos_axum::{generate_route_list, LeptosRoutes};
+        use strim_overlay::{AppState, fileserv::file_and_error_handler};
+
 async fn server_fn_handler(
     // State(_app_state): State<AppState>,
     path: Path<String>,
@@ -22,18 +34,6 @@ async fn server_fn_handler(
     )
     .await
 }
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "ssr")] {
-        use std::collections::VecDeque;
-
-        use axum::{
-            routing::{get, post},
-            Router,
-        };
-        use leptos::*;
-        use leptos_axum::{generate_route_list, LeptosRoutes};
-        use strim_overlay::{AppState, fileserv::file_and_error_handler};
 
         #[tokio::main]
         async fn main() {
