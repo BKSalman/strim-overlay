@@ -12,8 +12,6 @@ use leptos_router::*;
 use leptos_use::{core::ConnectionReadyState, use_websocket, UseWebsocketReturn};
 use std::rc::Rc;
 
-const CONFIG: &'static str = include_str!("../config.toml");
-
 #[derive(Clone)]
 pub struct WebsocketContext {
     pub message: Signal<Option<Vec<u8>>>,
@@ -41,16 +39,39 @@ impl WebsocketContext {
     }
 }
 
+#[derive(Clone)]
+pub struct BaseUrl(String);
+
+impl core::fmt::Display for BaseUrl {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     provide_meta_context();
+
+    let base_url = match option_env!("BASE_URL") {
+        Some(url) => BaseUrl(url.to_string()),
+        None => BaseUrl(String::from("http://127.0.0.1:3030")),
+    };
+
+    let base_ws_url = match option_env!("BASE_ws_URL") {
+        Some(url) => BaseUrl(url.to_string()),
+        None => BaseUrl(String::from("ws://127.0.0.1:3030")),
+    };
+
+    logging::log!("{base_url}");
 
     let UseWebsocketReturn {
         message_bytes,
         send_bytes,
         ready_state,
         ..
-    } = use_websocket("ws://127.0.0.1:3030/ws");
+    } = use_websocket(&format!("{base_ws_url}/ws",));
+
+    provide_context(base_url);
 
     provide_context(WebsocketContext::new(
         message_bytes,
@@ -77,6 +98,7 @@ pub fn App() -> impl IntoView {
         </Router>
     }
 }
+
 pub fn handle_websocket_message(
     websocket: WebsocketContext,
     owner: Owner,

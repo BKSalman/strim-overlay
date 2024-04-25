@@ -13,7 +13,7 @@ use leptos_use::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::{handle_websocket_message, WebsocketContext},
+    app::{handle_websocket_message, BaseUrl, WebsocketContext},
     server::is_authorized,
     Message, Player, Position,
 };
@@ -147,12 +147,17 @@ pub fn ControlPage() -> impl IntoView {
         }
     });
 
+    let fallback_view = || {
+        let base_url = expect_context::<BaseUrl>();
+        view! {
+            <a href=move || format!("https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=48mas39k4vcamtq5fy33r7qegf13l9&redirect_uri={base_url}/control&scope=user%3Aread%3Amoderated_channels&force_verify=true")>Authorize</a>
+        }
+    };
+
     view! {
         <Show
             when=move || authorized()
-            fallback=|| view! {
-                <a href="https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=48mas39k4vcamtq5fy33r7qegf13l9&redirect_uri=http://localhost:3030/control&scope=user%3Aread%3Amoderated_channels&force_verify=true">Authorize</a>
-            }
+            fallback=fallback_view
         >
             {move || {
                 if show_menu() {
