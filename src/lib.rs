@@ -18,13 +18,6 @@ cfg_if::cfg_if! {
         use axum::extract::FromRef;
 
         pub mod fileserv;
-
-        #[derive(serde::Deserialize, Debug, Clone)]
-        pub struct Config {
-            pub twitch_client_id: String,
-            pub twitch_client_secret: String,
-            pub twitch_broadcaster_id: String,
-        }
     }
 }
 
@@ -90,8 +83,6 @@ pub struct AppState {
     pub leptos_options: LeptosOptions,
     #[cfg(feature = "ssr")]
     pub routes: Vec<RouteListing>,
-    #[cfg(feature = "ssr")]
-    pub config: Config,
 }
 
 /// Messages from frontend to backend

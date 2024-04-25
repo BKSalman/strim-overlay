@@ -4,7 +4,7 @@ use axum::{
     response::IntoResponse,
 };
 use leptos_axum::handle_server_fns_with_context;
-use strim_overlay::{server::ssr::websocket, Config};
+use strim_overlay::server::ssr::websocket;
 use tower_http::compression::CompressionLayer;
 
 cfg_if::cfg_if! {
@@ -44,16 +44,11 @@ cfg_if::cfg_if! {
 
             let (sender, _receiver) = tokio::sync::broadcast::channel::<(u32, strim_overlay::Event)>(1024);
 
-            let toml_path = std::env::var("CONFIG_FILE").unwrap_or(String::from("./config.toml"));
-            let toml_str = std::fs::read_to_string(toml_path).expect("there should be a config.toml file");
-            let config = toml::from_str::<Config>(&toml_str).unwrap();
-
             let state = AppState {
                 routes: routes.clone(),
                 leptos_options,
                 players: std::sync::Arc::new(tokio::sync::RwLock::new(VecDeque::new())),
                 broadcaster: sender,
-                config,
             };
 
             let app = Router::new()
