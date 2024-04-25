@@ -1,5 +1,45 @@
 use leptos::*;
 
+#[server]
+pub async fn is_authorized(access_token: String) -> Result<bool, ServerFnError> {
+    use super::server::ssr::TwitchResponse;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .get("https://api.twitch.tv/helix/users")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("Client-Id", "48mas39k4vcamtq5fy33r7qegf13l9")
+        .send()
+        .await?
+        .json::<TwitchResponse>()
+        .await?;
+
+    let data = &res.data[0];
+
+    if data.get("login").unwrap().as_str().unwrap() == "sadmadladsalman" {
+        return Ok(true);
+    }
+
+    let id = data.get("id").unwrap().as_str().unwrap();
+
+    let res = client
+        .get(format!(
+            "https://api.twitch.tv/helix/moderation/channels?user_id={}",
+            id
+        ))
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("Client-Id", "48mas39k4vcamtq5fy33r7qegf13l9")
+        .send()
+        .await?
+        .json::<TwitchResponse>()
+        .await?;
+
+    Ok(res
+        .data
+        .iter()
+        .any(|broadcaster| broadcaster.get("broadcaster_login").unwrap() == "sadmadladsalman"))
+}
+
 #[cfg(feature = "ssr")]
 pub mod ssr {
     use std::collections::VecDeque;
@@ -7,6 +47,12 @@ pub mod ssr {
     use crate::{Event, Message as OverlayMessage, ServerPlayer};
     use axum::extract::{ws::Message, State};
     use leptos::*;
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    pub(crate) struct TwitchResponse {
+        pub data: Vec<serde_json::Map<String, serde_json::Value>>,
+    }
 
     use crate::AppState;
 
