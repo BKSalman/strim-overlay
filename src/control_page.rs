@@ -3,13 +3,13 @@ use std::collections::VecDeque;
 use base64::Engine;
 use leptos::{
     ev::MouseEvent,
-    html::{Div, Input},
+    html::Input,
     leptos_dom::helpers::{location, location_hash},
     *,
 };
 use leptos_use::{
-    core::ConnectionReadyState, storage::use_local_storage, use_element_size, use_event_listener,
-    use_interval_fn, use_window, utils::JsonCodec, UseElementSizeReturn,
+    core::ConnectionReadyState, storage::use_local_storage, use_event_listener, use_interval_fn,
+    use_window, utils::JsonCodec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -272,13 +272,6 @@ fn Players(
         }
     };
 
-    let div = create_node_ref::<Div>();
-
-    let UseElementSizeReturn { width, height } = use_element_size(div);
-
-    let (initial_xy, set_initial_xy) = create_signal((0., 0.));
-    let (initial_size, set_initial_size) = create_signal((200., 200.));
-
     let move_mouse = move |width: RwSignal<i32>,
                            height: RwSignal<Option<i32>>,
                            position: RwSignal<Position>,
@@ -296,10 +289,9 @@ fn Players(
                 send_set_position(i, pos.x, pos.y);
             });
         } else if resize_click() {
-            let initial = initial_size();
             width.update(|current_width| {
-                *current_width = ((initial.0 + event.client_x() as f64 - initial_xy().0) as f32
-                    / canvas_zoom()) as i32;
+                *current_width =
+                    (*current_width as f32 + (event.movement_x() as f32 / canvas_zoom())) as i32;
             });
             height.update(|current_height| {
                 if ctrl_pressed() {
@@ -307,8 +299,9 @@ fn Players(
                     *current_height = None;
                 } else {
                     *current_height = Some(
-                        ((initial.1 + event.client_y() as f64 - initial_xy().1) as f32
-                            / canvas_zoom()) as i32,
+                        (current_height.unwrap_or(width()) as f32
+                            + (event.movement_y() as f32 / canvas_zoom()))
+                            as i32,
                     );
                 }
             });
@@ -324,8 +317,6 @@ fn Players(
         } else if event.button() == 2 {
             // 2 = right click
             set_resize_click(true);
-            set_initial_size((width.get_untracked(), height.get_untracked()));
-            set_initial_xy((event.client_x() as f64, event.client_y() as f64));
         }
     };
 
@@ -379,8 +370,6 @@ fn Players(
                                 String::new()
                             }
                         }
-
-                        node_ref=div
                     >
                         {move || {
                             let file_type = player.file_type.get();
