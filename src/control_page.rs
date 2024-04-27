@@ -70,11 +70,13 @@ pub fn ControlPage() -> impl IntoView {
                 // authorize on client
                 let authorized = is_authorized(access_token.clone()).await.is_ok_and(|is| is);
                 if authorized {
+                    logging::log!("authorized");
                     set_authorized(true);
                     let websocket = expect_context::<WebsocketContext>();
                     // authorize on server
                     websocket.send(bincode::serialize(&Message::Authorize(access_token)).unwrap());
                 } else {
+                    logging::log!("unauthorized");
                     set_authorized(false);
                 }
             });

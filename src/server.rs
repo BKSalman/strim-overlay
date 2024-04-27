@@ -94,8 +94,12 @@ pub mod ssr {
                             match bincode::deserialize::<OverlayMessage>(&bytes) {
                                 Ok(message) => match message {
                                     OverlayMessage::Authorize(access_token) => {
+                                        logging::log!("received access token {access_token}");
                                         if is_authorized(access_token).await.is_ok_and(|a| a) {
+                                            logging::log!("is authorized");
                                             authorized = true;
+                                        } else {
+                                            logging::log!("not authorized");
                                         }
                                     },
                                     OverlayMessage::SetPosition {
@@ -103,6 +107,7 @@ pub mod ssr {
                                         new_position,
                                     } => {
                                         if !authorized {
+                                            logging::log!("SetPosition: not authorized");
                                             continue;
                                         }
 
@@ -128,6 +133,7 @@ pub mod ssr {
                                     }
                                     OverlayMessage::NewPlayer { src_url, file_type, position, width, height } => {
                                         if !authorized {
+                                            logging::log!("NewPlayer not authorized");
                                             continue;
                                         }
                                         add_new_player(socket_id,
@@ -147,6 +153,7 @@ pub mod ssr {
                                     }
                                     OverlayMessage::SetSize { player_idx, width, height } => {
                                         if !authorized {
+                                            logging::log!("SetSize not authorized");
                                             continue;
                                         }
                                         let mut players = state.players.write().await;

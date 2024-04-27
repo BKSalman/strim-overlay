@@ -58,7 +58,6 @@ fn Players() -> impl IntoView {
             create_effect(move |_| {
                 if let ConnectionReadyState::Open = websocket.ready_state.get() {
                     websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
-                    logging::log!("sending GetAllPlayers");
                 }
             });
         }
