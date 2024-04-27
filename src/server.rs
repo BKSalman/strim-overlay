@@ -44,7 +44,7 @@ pub async fn is_authorized(access_token: String) -> Result<bool, ServerFnError> 
 pub mod ssr {
     use std::collections::VecDeque;
 
-    use crate::{Event, Message as OverlayMessage, ServerPlayer};
+    use crate::{server::is_authorized, Event, Message as OverlayMessage, ServerPlayer};
     use axum::extract::{ws::Message, State};
     use leptos::*;
     use serde::Deserialize;
@@ -78,6 +78,7 @@ pub mod ssr {
     async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: AppState) {
         let socket_id = next_id();
         let mut broadcast_receiver = state.broadcaster.subscribe();
+        let mut authorized = false;
         loop {
             tokio::select! {
                 Ok((sender_id, event)) = broadcast_receiver.recv() => {
@@ -92,10 +93,19 @@ pub mod ssr {
                         Ok(Message::Binary(bytes)) => {
                             match bincode::deserialize::<OverlayMessage>(&bytes) {
                                 Ok(message) => match message {
+                                    OverlayMessage::Authorize(access_token) => {
+                                        if is_authorized(access_token).await.is_ok_and(|a| a) {
+                                            authorized = true;
+                                        }
+                                    },
                                     OverlayMessage::SetPosition {
                                         player_idx,
                                         new_position,
                                     } => {
+                                        if !authorized {
+                                            continue;
+                                        }
+
                                         let mut lock = state.players.write().await;
                                         let (i, player) = lock
                                             .iter_mut()
@@ -117,6 +127,9 @@ pub mod ssr {
                                         // let _ = socket.send(Message::Binary(event)).await;
                                     }
                                     OverlayMessage::NewPlayer { src_url, file_type, position, width, height } => {
+                                        if !authorized {
+                                            continue;
+                                        }
                                         add_new_player(socket_id,
                                             state.broadcaster.clone(),
                                             src_url, file_type, position, width,
@@ -133,6 +146,9 @@ pub mod ssr {
                                         let _ = socket.send(Message::Binary(event)).await;
                                     }
                                     OverlayMessage::SetSize { player_idx, width, height } => {
+                                        if !authorized {
+                                            continue;
+                                        }
                                         let mut players = state.players.write().await;
                                         let (i, player) = players.iter_mut().enumerate().find(|(i, _p)| *i == player_idx).unwrap();
 

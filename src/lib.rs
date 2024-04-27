@@ -88,6 +88,7 @@ pub struct AppState {
 /// Messages from frontend to backend
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Message {
+    Authorize(String),
     SetPosition {
         player_idx: usize,
         new_position: Position,
