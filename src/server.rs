@@ -24,7 +24,7 @@ pub async fn is_authorized(access_token: String) -> Result<bool, ServerFnError> 
 
     let res = client
         .get(format!(
-            "https://api.twitch.tv/helix/moderation/channels?user_id={}",
+            "https://api.twitch.tv/helix/moderation/channels?user_id={}&first=100",
             id
         ))
         .header("Authorization", format!("Bearer {}", access_token))
@@ -174,6 +174,11 @@ pub mod ssr {
 
                                         let _ = socket.send(Message::Binary(event)).await;
                                     },
+                                    OverlayMessage::Ping => {
+                                        logging::log!("socket: {socket_id} ping");
+                                        let event = bincode::serialize(&Event::Pong).unwrap();
+                                        let _ = socket.send(Message::Binary(event)).await;
+                                    }
                                 },
                                 Err(e) => logging::error!("{e}"),
                             }

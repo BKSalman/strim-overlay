@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use leptos::*;
-use leptos_use::core::ConnectionReadyState;
+use leptos_use::{core::ConnectionReadyState, use_interval_fn};
 
 use crate::{
     app::{handle_websocket_message, WebsocketContext},
@@ -21,6 +21,15 @@ fn Players() -> impl IntoView {
     let (players, set_players) = create_signal(VecDeque::<Player>::new());
     let websocket = expect_context::<WebsocketContext>();
 
+    {
+        let websocket = websocket.clone();
+        use_interval_fn(
+            move || {
+                websocket.send(bincode::serialize(&Message::Ping).unwrap());
+            },
+            5000,
+        );
+    }
     {
         let websocket = websocket.clone();
         create_effect(move |_| {

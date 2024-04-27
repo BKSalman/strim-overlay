@@ -9,7 +9,7 @@ use leptos::{
 };
 use leptos_use::{
     core::ConnectionReadyState, storage::use_local_storage, use_element_size, use_event_listener,
-    use_window, utils::JsonCodec, UseElementSizeReturn,
+    use_interval_fn, use_window, utils::JsonCodec, UseElementSizeReturn,
 };
 use serde::{Deserialize, Serialize};
 
@@ -216,6 +216,15 @@ fn Players(
     let (resize_click, set_resize_click) = create_signal(false);
 
     let websocket = expect_context::<WebsocketContext>();
+    {
+        let websocket = websocket.clone();
+        use_interval_fn(
+            move || {
+                websocket.send(bincode::serialize(&Message::Ping).unwrap());
+            },
+            5000,
+        );
+    }
 
     {
         let websocket = websocket.clone();

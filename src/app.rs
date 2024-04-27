@@ -161,6 +161,7 @@ pub fn handle_websocket_message(
                 player.width.set(new_width);
                 player.height.set(new_height);
             }),
+            Event::Pong => {}
         }
     }
 }

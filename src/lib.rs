@@ -88,6 +88,7 @@ pub struct AppState {
 /// Messages from frontend to backend
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Message {
+    Ping,
     Authorize(String),
     SetPosition {
         player_idx: usize,
@@ -111,6 +112,7 @@ pub enum Message {
 /// Events from backend to frontend
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
+    Pong,
     AllPlayers(VecDeque<ServerPlayer>),
     NewPlayer(ServerPlayer),
     PositionUpdated {
