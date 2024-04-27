@@ -13,3 +13,4 @@ end2end/playwright-report/
 playwright/.cache/
 .sass-cache/5b1681adf4932ebf28cb48f3cdd8dfc29ec96163
 config.toml
+result

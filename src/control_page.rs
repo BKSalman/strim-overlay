@@ -4,6 +4,7 @@ use base64::Engine;
 use leptos::{
     ev::MouseEvent,
     html::{Div, Input},
+    leptos_dom::helpers::{location, location_hash},
     *,
 };
 use leptos_use::{
@@ -13,7 +14,7 @@ use leptos_use::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::{handle_websocket_message, BaseUrl, WebsocketContext},
+    app::{handle_websocket_message, WebsocketContext},
     server::is_authorized,
     Message, Player, Position,
 };
@@ -35,8 +36,12 @@ impl Default for ScreenSize {
 
 #[component]
 pub fn ControlPage() -> impl IntoView {
-    let websocket = expect_context::<WebsocketContext>();
-    websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+    let (base_url, set_base_url) = create_signal(String::new());
+    create_effect(move |_| {
+        let location = window().location();
+
+        set_base_url(location.origin().unwrap());
+    });
 
     // auth (I guess)
     let (authorized, set_authorized) = create_signal(false);
@@ -44,28 +49,32 @@ pub fn ControlPage() -> impl IntoView {
         use_local_storage::<Option<String>, JsonCodec>("access_token");
 
     create_effect(move |_| {
-        let location = use_window().as_ref().unwrap().location();
-        if let Ok(hash) = location.hash() {
+        if let Some(hash) = location_hash() {
+            logging::log!("hash: {hash}");
             if hash.is_empty() {
                 return;
             }
 
             if let Some(token) = hash
                 .split("&")
-                .find_map(|s| s.strip_prefix("#access_token="))
+                .find_map(|s| s.strip_prefix("access_token="))
             {
                 set_access_token(Some(token.to_string()));
             }
-            let _ = location.set_hash("");
+            let _ = location().set_hash("");
         }
     });
 
     create_effect(move |_| {
         if let Some(access_token) = access_token() {
             spawn_local(async move {
-                let is_mod = is_authorized(access_token).await.is_ok_and(|is| is);
-                if is_mod {
+                // authorize on client
+                let authorized = is_authorized(access_token.clone()).await.is_ok_and(|is| is);
+                if authorized {
                     set_authorized(true);
+                    let websocket = expect_context::<WebsocketContext>();
+                    // authorize on server
+                    websocket.send(bincode::serialize(&Message::Authorize(access_token)).unwrap());
                 } else {
                     set_authorized(false);
                 }
@@ -147,10 +156,10 @@ pub fn ControlPage() -> impl IntoView {
         }
     });
 
-    let fallback_view = || {
-        let base_url = expect_context::<BaseUrl>();
+    let fallback_view = move || {
+        let base_url = base_url.clone();
         view! {
-            <a href=move || format!("https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=48mas39k4vcamtq5fy33r7qegf13l9&redirect_uri={base_url}/control&scope=user%3Aread%3Amoderated_channels&force_verify=true")>Authorize</a>
+            <a href=move || format!("https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=48mas39k4vcamtq5fy33r7qegf13l9&redirect_uri={}/control&scope=user%3Aread%3Amoderated_channels&force_verify=true", base_url())>Authorize</a>
         }
     };
 
@@ -177,6 +186,9 @@ fn Players(
     canvas_zoom: ReadSignal<f32>,
     ctrl_pressed: ReadSignal<bool>,
 ) -> impl IntoView {
+    let websocket = expect_context::<WebsocketContext>();
+    websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+
     let owner = leptos::Owner::current().expect("there should be an owner");
     let (players, set_players) = create_signal(VecDeque::<Player>::new());
     let (move_click, set_move_click) = create_signal(false);
@@ -248,15 +260,18 @@ fn Players(
         } else if resize_click() {
             let initial = initial_size();
             width.update(|current_width| {
-                *current_width = (initial.0 + event.client_x() as f64 - initial_xy().0) as i32;
+                *current_width = ((initial.0 + event.client_x() as f64 - initial_xy().0) as f32
+                    / canvas_zoom()) as i32;
             });
             height.update(|current_height| {
                 if ctrl_pressed() {
                     // None means this should keep the aspect ratio of the player and set the height to auto
                     *current_height = None;
                 } else {
-                    *current_height =
-                        Some((initial.1 + event.client_y() as f64 - initial_xy().1) as i32);
+                    *current_height = Some(
+                        ((initial.1 + event.client_y() as f64 - initial_xy().1) as f32
+                            / canvas_zoom()) as i32,
+                    );
                 }
             });
             send_set_size(i, width.get_untracked(), height.get_untracked());
@@ -428,7 +443,7 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>, canvas_zoom: ReadSignal<f32>) -
         <button on:click={
             let on_file_submit = on_file_submit.clone();
             move |_event| on_file_submit()
-        }>"New player"</button>
+        }>"Add"</button>
         <input type="file" accept="video/webm,image/*" node_ref=input_element/>
         <button on:click={
             let get_all_players = get_all_players.clone();

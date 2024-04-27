@@ -10,8 +10,34 @@ use crate::{
 
 #[component]
 pub fn HomePage() -> impl IntoView {
-    let websocket = expect_context::<WebsocketContext>();
-    websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+    // if is_browser() {
+    //     let location = window().location();
+
+    //     let protocol = location.protocol().unwrap();
+    //     let base_ws_url = format!(
+    //         "{}//{}",
+    //         if protocol == "http:" { "ws:" } else { "wss:" },
+    //         location.host().unwrap()
+    //     );
+
+    //     let UseWebsocketReturn {
+    //         message_bytes,
+    //         send_bytes,
+    //         ready_state,
+    //         ..
+    //     } = use_websocket(&format!("{base_ws_url}/ws",));
+
+    //     provide_context(WebsocketContext::new(
+    //         message_bytes,
+    //         Rc::new(send_bytes.clone()),
+    //         ready_state,
+    //     ));
+    // }
+
+    create_effect(|_| {
+        let websocket = expect_context::<WebsocketContext>();
+        websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+    });
 
     view! {
         <Players/>
@@ -22,26 +48,27 @@ pub fn HomePage() -> impl IntoView {
 fn Players() -> impl IntoView {
     let owner = leptos::Owner::current().expect("there should be an owner");
     let (players, set_players) = create_signal(VecDeque::<Player>::new());
+    create_effect(move |_| {
+        let websocket = expect_context::<WebsocketContext>();
 
-    let websocket = expect_context::<WebsocketContext>();
+        {
+            let websocket = websocket.clone();
+            create_effect(move |_| match websocket.ready_state.get() {
+                ConnectionReadyState::Open => {
+                    websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+                    logging::log!("sending GetAllPlayers");
+                }
+                _ => {}
+            });
+        }
 
-    {
-        let websocket = websocket.clone();
-        create_effect(move |_| match websocket.ready_state.get() {
-            ConnectionReadyState::Open => {
-                websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
-                logging::log!("sending GetAllPlayers");
-            }
-            _ => {}
-        });
-    }
-
-    {
-        let websocket = websocket.clone();
-        create_effect(move |_| {
-            handle_websocket_message(websocket.clone(), owner, set_players.clone());
-        });
-    }
+        {
+            let websocket = websocket.clone();
+            create_effect(move |_| {
+                handle_websocket_message(websocket.clone(), owner, set_players.clone());
+            });
+        }
+    });
 
     view! {
         <For

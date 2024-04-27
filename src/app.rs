@@ -52,26 +52,27 @@ impl core::fmt::Display for BaseUrl {
 pub fn App() -> impl IntoView {
     provide_meta_context();
 
-    let base_url = match option_env!("BASE_URL") {
-        Some(url) => BaseUrl(url.to_string()),
-        None => BaseUrl(String::from("http://127.0.0.1:3030")),
-    };
+    let (ws_url, set_ws_url) = create_signal(String::new());
 
-    let base_ws_url = match option_env!("BASE_ws_URL") {
-        Some(url) => BaseUrl(url.to_string()),
-        None => BaseUrl(String::from("ws://127.0.0.1:3030")),
-    };
+    create_effect(move |_| {
+        let location = window().location();
 
-    logging::log!("{base_url}");
+        let protocol = location.protocol().unwrap();
+        let base_ws_url = format!(
+            "{}//{}",
+            if protocol == "http:" { "ws:" } else { "wss:" },
+            location.host().unwrap()
+        );
+
+        set_ws_url.set_untracked(base_ws_url);
+    });
 
     let UseWebsocketReturn {
         message_bytes,
         send_bytes,
         ready_state,
         ..
-    } = use_websocket(&format!("{base_ws_url}/ws",));
-
-    provide_context(base_url);
+    } = use_websocket(&format!("{}/ws", ws_url.get_untracked()));
 
     provide_context(WebsocketContext::new(
         message_bytes,
