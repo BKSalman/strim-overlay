@@ -16,6 +16,7 @@ use std::rc::Rc;
 pub struct WebsocketContext {
     pub message: Signal<Option<Vec<u8>>>,
     send: Rc<dyn Fn(Vec<u8>)>, // use Rc to make it easily cloneable
+    open: Rc<dyn Fn()>,
     pub ready_state: Signal<ConnectionReadyState>,
 }
 
@@ -23,11 +24,13 @@ impl WebsocketContext {
     pub fn new(
         message: Signal<Option<Vec<u8>>>,
         send: Rc<dyn Fn(Vec<u8>)>,
+        open: Rc<dyn Fn()>,
         ready_state: Signal<ConnectionReadyState>,
     ) -> Self {
         Self {
             message,
             send,
+            open,
             ready_state,
         }
     }
@@ -36,6 +39,12 @@ impl WebsocketContext {
     #[inline(always)]
     pub fn send(&self, message: Vec<u8>) {
         (self.send)(message)
+    }
+
+    // create a method to avoid having to use parantheses around the field
+    #[inline(always)]
+    pub fn open(&self) {
+        (self.open)()
     }
 }
 
@@ -71,12 +80,14 @@ pub fn App() -> impl IntoView {
         message_bytes,
         send_bytes,
         ready_state,
+        open,
         ..
     } = use_websocket(&format!("{}/ws", ws_url.get_untracked()));
 
     provide_context(WebsocketContext::new(
         message_bytes,
         Rc::new(send_bytes.clone()),
+        Rc::new(open.clone()),
         ready_state,
     ));
 

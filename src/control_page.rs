@@ -81,19 +81,29 @@ pub fn ControlPage() -> impl IntoView {
             });
         }
     });
-
-    create_effect(move |_| {
-        if let Some(access_token) = access_token() {
-            // authorize on server
-            let message = Message::Authorize(access_token);
-            match websocket.ready_state.get() {
-                ConnectionReadyState::Open => {
-                    websocket.send(bincode::serialize(&message).unwrap());
+    {
+        let websocket = websocket.clone();
+        create_effect(move |_| {
+            if let Some(access_token) = access_token() {
+                // authorize on server
+                let message = Message::Authorize(access_token);
+                match websocket.ready_state.get() {
+                    ConnectionReadyState::Open => {
+                        websocket.send(bincode::serialize(&message).unwrap());
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        }
-    });
+        });
+    }
+    {
+        let websocket = websocket.clone();
+        create_effect(move |_| {
+            if let ConnectionReadyState::Closed = websocket.ready_state.get() {
+                websocket.open();
+            }
+        });
+    }
 
     let (show_menu, set_show_menu) = create_signal(false);
 
