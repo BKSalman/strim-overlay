@@ -105,51 +105,53 @@ pub fn handle_websocket_message(
     owner: Owner,
     set_players: WriteSignal<VecDeque<Player>>,
 ) {
-    if let Some(message) = websocket.message.get() {
-        match bincode::deserialize::<Event>(&message).unwrap() {
-            Event::AllPlayers(incoming_players) => {
-                leptos::with_owner(owner, || {
-                    let local_players = incoming_players
-                        .into_iter()
-                        .map(|p| Player::from(p))
-                        .collect();
-                    set_players.set(local_players);
-                });
-            }
-            Event::NewPlayer(player) => {
-                leptos::with_owner(owner, || {
-                    let player = Player::from(player);
-                    set_players.update(|players| {
-                        players.push_back(player);
+    if let ConnectionReadyState::Open = websocket.ready_state.get() {
+        if let Some(message) = websocket.message.get() {
+            match bincode::deserialize::<Event>(&message).unwrap() {
+                Event::AllPlayers(incoming_players) => {
+                    leptos::with_owner(owner, || {
+                        let local_players = incoming_players
+                            .into_iter()
+                            .map(|p| Player::from(p))
+                            .collect();
+                        set_players.set(local_players);
                     });
-                });
+                }
+                Event::NewPlayer(player) => {
+                    leptos::with_owner(owner, || {
+                        let player = Player::from(player);
+                        set_players.update(|players| {
+                            players.push_back(player);
+                        });
+                    });
+                }
+                Event::PositionUpdated {
+                    player_idx,
+                    new_position,
+                } => set_players.update(|players| {
+                    let (_, player) = players
+                        .iter_mut()
+                        .enumerate()
+                        .find(|(i, _p)| *i == player_idx)
+                        .unwrap();
+
+                    player.position.set(new_position);
+                }),
+                Event::SizeUpdated {
+                    player_idx,
+                    new_width,
+                    new_height,
+                } => set_players.update(|players| {
+                    let (_, player) = players
+                        .iter_mut()
+                        .enumerate()
+                        .find(|(i, _p)| *i == player_idx)
+                        .unwrap();
+
+                    player.width.set(new_width);
+                    player.height.set(new_height);
+                }),
             }
-            Event::PositionUpdated {
-                player_idx,
-                new_position,
-            } => set_players.update(|players| {
-                let (_, player) = players
-                    .iter_mut()
-                    .enumerate()
-                    .find(|(i, _p)| *i == player_idx)
-                    .unwrap();
-
-                player.position.set(new_position);
-            }),
-            Event::SizeUpdated {
-                player_idx,
-                new_width,
-                new_height,
-            } => set_players.update(|players| {
-                let (_, player) = players
-                    .iter_mut()
-                    .enumerate()
-                    .find(|(i, _p)| *i == player_idx)
-                    .unwrap();
-
-                player.width.set(new_width);
-                player.height.set(new_height);
-            }),
         }
     }
 }

@@ -36,7 +36,9 @@ pub fn HomePage() -> impl IntoView {
 
     create_effect(|_| {
         let websocket = expect_context::<WebsocketContext>();
-        websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+        if let ConnectionReadyState::Open = websocket.ready_state.get() {
+            websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+        }
     });
 
     view! {
@@ -53,12 +55,11 @@ fn Players() -> impl IntoView {
 
         {
             let websocket = websocket.clone();
-            create_effect(move |_| match websocket.ready_state.get() {
-                ConnectionReadyState::Open => {
+            create_effect(move |_| {
+                if let ConnectionReadyState::Open = websocket.ready_state.get() {
                     websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
                     logging::log!("sending GetAllPlayers");
                 }
-                _ => {}
             });
         }
 
