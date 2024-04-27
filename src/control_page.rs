@@ -50,7 +50,6 @@ pub fn ControlPage() -> impl IntoView {
 
     create_effect(move |_| {
         if let Some(hash) = location_hash() {
-            logging::log!("hash: {hash}");
             if hash.is_empty() {
                 return;
             }
@@ -316,7 +315,7 @@ fn Players(
                             set_resize_click(false);
                         }
 
-                        style="position: absolute; z-index: 2; box-sizing: border-box;"
+                        style="position: absolute; z-index: 2;"
                         style:left=move || {
                             format!("{}px", (player.position.get().x + canvas_position().0) as f32 * canvas_zoom())
                         }
@@ -334,7 +333,7 @@ fn Players(
                             }
                         }
 
-                        style:border=move || {
+                        style:outline=move || {
                             if resize_click() || move_click() {
                                 format!("3px solid black")
                             } else {
@@ -450,7 +449,7 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>, canvas_zoom: ReadSignal<f32>) -
             move |_| get_all_players()
         }>"All players"</button>
         <div
-            style="z-index: -5000; border: 3px solid black; position: absolute;"
+            style="z-index: -5000; outline: 3px solid black; position: absolute;"
             style:width=move || format!("{}px", screen_size().width as f32 * canvas_zoom())
             style:height=move || format!("{}px", screen_size().height as f32 * canvas_zoom())
             style:left=move || format!("{}px", canvas_position().0 as f32 * canvas_zoom())
