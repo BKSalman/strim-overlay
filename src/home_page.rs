@@ -65,7 +65,9 @@ fn Players() -> impl IntoView {
         {
             let websocket = websocket.clone();
             create_effect(move |_| {
-                handle_websocket_message(websocket.clone(), owner, set_players.clone());
+                if let ConnectionReadyState::Open = websocket.ready_state.get() {
+                    handle_websocket_message(websocket.clone(), owner, set_players.clone());
+                }
             });
         }
     });

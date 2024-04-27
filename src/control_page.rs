@@ -188,7 +188,7 @@ pub fn ControlPage() -> impl IntoView {
                     view! {}.into_view()
                 }
             }}
-            <Players canvas_position canvas_zoom ctrl_pressed/>
+            <Players canvas_position canvas_zoom ctrl_pressed authorized/>
         </Show>
     }
 }
@@ -198,6 +198,7 @@ fn Players(
     canvas_position: ReadSignal<(i32, i32)>,
     canvas_zoom: ReadSignal<f32>,
     ctrl_pressed: ReadSignal<bool>,
+    authorized: ReadSignal<bool>,
 ) -> impl IntoView {
     let owner = leptos::Owner::current().expect("there should be an owner");
     let (players, set_players) = create_signal(VecDeque::<Player>::new());
@@ -208,29 +209,34 @@ fn Players(
 
     {
         let websocket = websocket.clone();
-        create_effect(move |_| match websocket.ready_state.get() {
-            ConnectionReadyState::Open => {
+        create_effect(move |_| {
+            if let ConnectionReadyState::Open = websocket.ready_state.get() {
                 websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
             }
-            _ => {}
         });
     }
 
     {
         let websocket = websocket.clone();
         create_effect(move |_| {
-            handle_websocket_message(websocket.clone(), owner, set_players.clone());
+            if let ConnectionReadyState::Open = websocket.ready_state.get() {
+                handle_websocket_message(websocket.clone(), owner, set_players.clone());
+            }
         });
     }
 
-    let set_position = {
+    let send_set_position = {
         let websocket = websocket.clone();
         move |player_idx: usize, x: i32, y: i32| {
             let message = Message::SetPosition {
                 player_idx,
                 new_position: Position { x, y },
             };
-            websocket.send(bincode::serialize(&message).unwrap());
+            if let ConnectionReadyState::Open = websocket.ready_state.get() {
+                if authorized() {
+                    websocket.send(bincode::serialize(&message).unwrap());
+                }
+            }
         }
     };
 
@@ -240,7 +246,11 @@ fn Players(
             width,
             height,
         };
-        websocket.send(bincode::serialize(&message).unwrap());
+        if let ConnectionReadyState::Open = websocket.ready_state.get() {
+            if authorized() {
+                websocket.send(bincode::serialize(&message).unwrap());
+            }
+        }
     };
 
     let div = create_node_ref::<Div>();
@@ -257,14 +267,14 @@ fn Players(
                            event: leptos::ev::MouseEvent| {
         event.prevent_default();
 
-        let set_position = set_position.clone();
+        let send_set_position = send_set_position.clone();
         let send_set_size = send_set_size.clone();
         event.prevent_default();
         if move_click() {
             position.update(|pos| {
                 pos.x += (event.movement_x() as f32 / canvas_zoom()) as i32;
                 pos.y += (event.movement_y() as f32 / canvas_zoom()) as i32;
-                set_position(i, pos.x, pos.y);
+                send_set_position(i, pos.x, pos.y);
             });
         } else if resize_click() {
             let initial = initial_size();
