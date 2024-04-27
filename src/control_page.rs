@@ -64,6 +64,8 @@ pub fn ControlPage() -> impl IntoView {
         }
     });
 
+    let websocket = expect_context::<WebsocketContext>();
+
     create_effect(move |_| {
         if let Some(access_token) = access_token() {
             spawn_local(async move {
@@ -72,14 +74,24 @@ pub fn ControlPage() -> impl IntoView {
                 if authorized {
                     logging::log!("authorized");
                     set_authorized(true);
-                    let websocket = expect_context::<WebsocketContext>();
-                    // authorize on server
-                    websocket.send(bincode::serialize(&Message::Authorize(access_token)).unwrap());
                 } else {
                     logging::log!("unauthorized");
                     set_authorized(false);
                 }
             });
+        }
+    });
+
+    create_effect(move |_| {
+        if let Some(access_token) = access_token() {
+            // authorize on server
+            let message = Message::Authorize(access_token);
+            match websocket.ready_state.get() {
+                ConnectionReadyState::Open => {
+                    websocket.send(bincode::serialize(&message).unwrap());
+                }
+                _ => {}
+            }
         }
     });
 
@@ -187,9 +199,6 @@ fn Players(
     canvas_zoom: ReadSignal<f32>,
     ctrl_pressed: ReadSignal<bool>,
 ) -> impl IntoView {
-    let websocket = expect_context::<WebsocketContext>();
-    websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
-
     let owner = leptos::Owner::current().expect("there should be an owner");
     let (players, set_players) = create_signal(VecDeque::<Player>::new());
     let (move_click, set_move_click) = create_signal(false);
@@ -202,7 +211,6 @@ fn Players(
         create_effect(move |_| match websocket.ready_state.get() {
             ConnectionReadyState::Open => {
                 websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
-                logging::log!("sending GetAllPlayers");
             }
             _ => {}
         });
