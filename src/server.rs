@@ -42,10 +42,9 @@ pub async fn is_authorized(access_token: String) -> Result<bool, ServerFnError> 
 
 #[cfg(feature = "ssr")]
 pub mod ssr {
-    use std::collections::VecDeque;
-
     use crate::{server::is_authorized, Event, Message as OverlayMessage, ServerPlayer};
     use axum::extract::{ws::Message, State};
+    use indexmap::IndexMap;
     use leptos::*;
     use serde::Deserialize;
 
@@ -94,8 +93,10 @@ pub mod ssr {
                             match bincode::deserialize::<OverlayMessage>(&bytes) {
                                 Ok(message) => match message {
                                     OverlayMessage::Authorize(access_token) => {
+                                        #[cfg(debug_assertions)]
                                         logging::log!("received access token {access_token}");
                                         if is_authorized(access_token).await.is_ok_and(|a| a) {
+                                            #[cfg(debug_assertions)]
                                             logging::log!("is authorized");
                                             authorized = true;
                                         } else {
@@ -103,7 +104,7 @@ pub mod ssr {
                                         }
                                     },
                                     OverlayMessage::SetPosition {
-                                        player_idx,
+                                        player_name,
                                         new_position,
                                     } => {
                                         if !authorized {
@@ -112,15 +113,13 @@ pub mod ssr {
                                         }
 
                                         let mut lock = state.players.write().await;
-                                        let (i, player) = lock
-                                            .iter_mut()
-                                            .enumerate()
-                                            .find(|(i, _p)| *i == player_idx)
-                                            .unwrap();
+                                        let Some(player) = lock.get_mut(&player_name) else {
+                                            continue;
+                                        };
                                         player.position = new_position;
 
                                         let event = Event::PositionUpdated {
-                                            player_idx: i,
+                                            player_name: player.name.clone(),
                                             new_position: player.position.clone(),
                                         };
 
@@ -131,7 +130,7 @@ pub mod ssr {
                                         // let event = bincode::serialize(&event).unwrap();
                                         // let _ = socket.send(Message::Binary(event)).await;
                                     }
-                                    OverlayMessage::NewPlayer { src_url, file_type, position, width, height } => {
+                                    OverlayMessage::NewPlayer { name, src_url, file_type, position, width, height } => {
                                         if !authorized {
                                             logging::log!("NewPlayer not authorized");
                                             continue;
@@ -140,7 +139,8 @@ pub mod ssr {
                                             state.broadcaster.clone(),
                                             src_url, file_type, position, width,
                                             height, &mut socket,
-                                            state.players.clone()
+                                            state.players.clone(),
+                                            name,
                                         ).await.unwrap()
                                     },
                                     OverlayMessage::GetAllPlayers => {
@@ -151,19 +151,21 @@ pub mod ssr {
                                         .unwrap();
                                         let _ = socket.send(Message::Binary(event)).await;
                                     }
-                                    OverlayMessage::SetSize { player_idx, width, height } => {
+                                    OverlayMessage::SetSize { player_name, width, height } => {
                                         if !authorized {
                                             logging::log!("SetSize not authorized");
                                             continue;
                                         }
                                         let mut players = state.players.write().await;
-                                        let (i, player) = players.iter_mut().enumerate().find(|(i, _p)| *i == player_idx).unwrap();
+                                        let Some(player) = players.get_mut(&player_name) else {
+                                            continue;
+                                        };
 
                                         player.width = width;
                                         player.height = height;
 
                                         let event = Event::SizeUpdated {
-                                            player_idx: i,
+                                            player_name: player.name.clone(),
                                             new_width: player.width,
                                             new_height: player.height,
                                         };
@@ -174,7 +176,50 @@ pub mod ssr {
 
                                         let _ = socket.send(Message::Binary(event)).await;
                                     },
+                                    OverlayMessage::DeletePlayer { player_name } => {
+                                        let mut players = state.players.write().await;
+                                        if players.shift_remove(&player_name).is_some() {
+                                            let event = Event::PlayerDeleted { player_name };
+
+                                            let _ = state.broadcaster.send((socket_id, event.clone()));
+
+                                            let event = bincode::serialize(&event).unwrap();
+                                            let _ = socket.send(Message::Binary(event)).await;
+                                        }
+                                    },
+                                    OverlayMessage::MovePlayerUp { player_name } => {
+                                        let mut players = state.players.write().await;
+                                        if let Some(s) = players.get_index_of(&player_name) {
+                                            if s > 0 {
+                                                logging::log!("moving {player_name} up");
+                                                players.swap_indices(s, s - 1);
+                                                let event = Event::PlayerMovedUp { player_name };
+
+                                                let _ = state.broadcaster.send((socket_id, event.clone()));
+
+                                                let event = bincode::serialize(&event).unwrap();
+                                                let _ = socket.send(Message::Binary(event)).await;
+                                            }
+                                        }
+                                    },
+                                    OverlayMessage::MovePlayerDown { player_name } => {
+                                        let mut players = state.players.write().await;
+                                        if let Some(s) = players.get_index_of(&player_name) {
+                                            if players.len() > s + 1 {
+                                                logging::log!("moving {player_name} down");
+                                                players.swap_indices(s, s + 1);
+
+                                                let event = Event::PlayerMovedDown { player_name };
+
+                                                let _ = state.broadcaster.send((socket_id, event.clone()));
+
+                                                let event = bincode::serialize(&event).unwrap();
+                                                let _ = socket.send(Message::Binary(event)).await;
+                                            }
+                                        }
+                                    },
                                     OverlayMessage::Ping => {
+                                        #[cfg(debug_assertions)]
                                         logging::log!("socket: {socket_id} ping");
                                         let event = bincode::serialize(&Event::Pong).unwrap();
                                         let _ = socket.send(Message::Binary(event)).await;
@@ -203,13 +248,35 @@ pub mod ssr {
         width: i32,
         height: Option<i32>,
         socket: &mut axum::extract::ws::WebSocket,
-        players: std::sync::Arc<tokio::sync::RwLock<VecDeque<ServerPlayer>>>,
+        players: std::sync::Arc<tokio::sync::RwLock<IndexMap<String, ServerPlayer>>>,
+        name: String,
     ) -> anyhow::Result<()> {
         if file_type != "video/webm" && !file_type.starts_with("image") {
             return Ok(());
         }
 
+        let duplicated_count = players
+            .read()
+            .await
+            .iter()
+            .filter(|(p_name, _)| p_name.starts_with(&name))
+            .count();
+
+        logging::log!("duplicates: {duplicated_count}");
+
+        let name = if duplicated_count > 0 {
+            let mut stripped = name
+                .strip_suffix(&format!("-{duplicated_count}"))
+                .map(|s| s.to_string())
+                .unwrap_or(name);
+            stripped.push_str(&format!("-{}", duplicated_count + 1));
+            stripped
+        } else {
+            name
+        };
+
         let player = ServerPlayer {
+            name,
             url: src_url,
             file_type,
             position,
@@ -218,13 +285,17 @@ pub mod ssr {
         };
         logging::log!("adding new player: {}", player.file_type);
 
-        let event = Event::NewPlayer(player.clone());
+        players
+            .write()
+            .await
+            .insert(player.name.clone(), player.clone());
+
+        let event = Event::NewPlayer(player);
 
         let _ = broadcaster.send((socket_id, event.clone()));
 
         let event = bincode::serialize(&event).unwrap();
         let _ = socket.send(Message::Binary(event)).await;
-        players.write().await.push_back(player);
 
         Ok(())
     }

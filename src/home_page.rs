@@ -1,5 +1,4 @@
-use std::collections::VecDeque;
-
+use indexmap::IndexMap;
 use leptos::*;
 use leptos_use::{core::ConnectionReadyState, use_interval_fn};
 
@@ -10,15 +9,13 @@ use crate::{
 
 #[component]
 pub fn HomePage() -> impl IntoView {
-    view! {
-        <Players/>
-    }
+    view! { <Players/> }
 }
 
 #[component]
 fn Players() -> impl IntoView {
     let owner = leptos::Owner::current().expect("there should be an owner");
-    let (players, set_players) = create_signal(VecDeque::<Player>::new());
+    let (players, set_players) = create_signal(IndexMap::<String, Player>::new());
     let websocket = expect_context::<WebsocketContext>();
 
     {
@@ -59,19 +56,15 @@ fn Players() -> impl IntoView {
 
     view! {
         <For
-            each=move || players().into_iter().enumerate()
-            key=|(i, _)| *i
-            children=move |(_i, player): (usize, Player)| {
+            each=move || players().into_iter()
+            key=|(name, _)| name.clone()
+            children=move |(_name, player): (String, Player)| {
                 view! {
                     <div
                         style="position: absolute; z-index: 2; box-sizing: border-box;"
-                        style:left=move || {
-                            format!("{}px", player.position.get().x)
-                        }
+                        style:left=move || { format!("{}px", player.position.get().x) }
 
-                        style:top=move || {
-                            format!("{}px", player.position.get().y)
-                        }
+                        style:top=move || { format!("{}px", player.position.get().y) }
 
                         style:width=move || format!("{}px", player.width.get())
                         style:height=move || {
@@ -82,6 +75,7 @@ fn Players() -> impl IntoView {
                             }
                         }
                     >
+
                         {move || {
                             let file_type = player.file_type.get();
                             if file_type.starts_with("video") {

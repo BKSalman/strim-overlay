@@ -3,14 +3,13 @@ use axum::{
     extract::{Path, Request},
     response::IntoResponse,
 };
+use indexmap::IndexMap;
 use leptos_axum::handle_server_fns_with_context;
 use strim_overlay::server::ssr::websocket;
 use tower_http::compression::CompressionLayer;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "ssr")] {
-        use std::collections::VecDeque;
-
         use axum::{
             routing::{get, post},
             Router,
@@ -47,7 +46,7 @@ cfg_if::cfg_if! {
             let state = AppState {
                 routes: routes.clone(),
                 leptos_options,
-                players: std::sync::Arc::new(tokio::sync::RwLock::new(VecDeque::new())),
+                players: std::sync::Arc::new(tokio::sync::RwLock::new(IndexMap::new())),
                 broadcaster: sender,
             };
 

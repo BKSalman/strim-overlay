@@ -1,11 +1,10 @@
-use std::collections::VecDeque;
-
 use crate::{
     control_page::ControlPage,
     error_template::{AppError, ErrorTemplate},
     home_page::HomePage,
     Event, Player,
 };
+use indexmap::IndexMap;
 use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
@@ -114,7 +113,7 @@ pub fn App() -> impl IntoView {
 pub fn handle_websocket_message(
     websocket: WebsocketContext,
     owner: Owner,
-    set_players: WriteSignal<VecDeque<Player>>,
+    set_players: WriteSignal<IndexMap<String, Player>>,
 ) {
     if let Some(message) = websocket.message.get() {
         match bincode::deserialize::<Event>(&message).unwrap() {
@@ -122,7 +121,7 @@ pub fn handle_websocket_message(
                 leptos::with_owner(owner, || {
                     let local_players = incoming_players
                         .into_iter()
-                        .map(|p| Player::from(p))
+                        .map(|(n, p)| (n, Player::from(p)))
                         .collect();
                     set_players.set(local_players);
                 });
@@ -131,35 +130,42 @@ pub fn handle_websocket_message(
                 leptos::with_owner(owner, || {
                     let player = Player::from(player);
                     set_players.update(|players| {
-                        players.push_back(player);
+                        players.insert(player.name.get_untracked(), player);
                     });
                 });
             }
             Event::PositionUpdated {
-                player_idx,
+                player_name,
                 new_position,
             } => set_players.update(|players| {
-                let (_, player) = players
-                    .iter_mut()
-                    .enumerate()
-                    .find(|(i, _p)| *i == player_idx)
-                    .unwrap();
-
-                player.position.set(new_position);
+                if let Some(player) = players.get_mut(&player_name) {
+                    player.position.set(new_position);
+                }
             }),
             Event::SizeUpdated {
-                player_idx,
+                player_name,
                 new_width,
                 new_height,
             } => set_players.update(|players| {
-                let (_, player) = players
-                    .iter_mut()
-                    .enumerate()
-                    .find(|(i, _p)| *i == player_idx)
-                    .unwrap();
-
-                player.width.set(new_width);
-                player.height.set(new_height);
+                if let Some(player) = players.get_mut(&player_name) {
+                    player.width.set(new_width);
+                    player.height.set(new_height);
+                }
+            }),
+            Event::PlayerDeleted { player_name } => set_players.update(|players| {
+                players.shift_remove(&player_name);
+            }),
+            Event::PlayerMovedUp { player_name } => set_players.update(|players| {
+                logging::log!("moving {player_name} up");
+                if let Some(s) = players.get_index_of(&player_name) {
+                    players.swap_indices(s, s - 1);
+                }
+            }),
+            Event::PlayerMovedDown { player_name } => set_players.update(|players| {
+                logging::log!("moving {player_name} down");
+                if let Some(s) = players.get_index_of(&player_name) {
+                    players.swap_indices(s, s + 1);
+                }
             }),
             Event::Pong => {}
         }

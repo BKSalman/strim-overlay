@@ -1,6 +1,5 @@
-use std::collections::VecDeque;
-
 use base64::Engine;
+use indexmap::IndexMap;
 use leptos::{
     ev::MouseEvent,
     html::Input,
@@ -105,7 +104,7 @@ pub fn ControlPage() -> impl IntoView {
         });
     }
 
-    let (show_menu, set_show_menu) = create_signal(false);
+    let (show_menu, set_show_menu) = create_signal(true);
 
     let _ = use_event_listener(use_window(), leptos::ev::contextmenu, move |event| {
         event.prevent_default();
@@ -182,36 +181,42 @@ pub fn ControlPage() -> impl IntoView {
     let fallback_view = move || {
         let base_url = base_url.clone();
         view! {
-            <a href=move || format!("https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=48mas39k4vcamtq5fy33r7qegf13l9&redirect_uri={}/control&scope=user%3Aread%3Amoderated_channels&force_verify=true", base_url())>Authorize</a>
+            <a href=move || {
+                format!(
+                    "https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=48mas39k4vcamtq5fy33r7qegf13l9&redirect_uri={}/control&scope=user%3Aread%3Amoderated_channels&force_verify=true",
+                    base_url(),
+                )
+            }>Authorize</a>
         }
     };
 
+    let (players, set_players) = create_signal(IndexMap::<String, Player>::new());
+
     view! {
-        <Show
-            when=move || authorized()
-            fallback=fallback_view
-        >
+        <Show when=move || authorized() fallback=fallback_view>
             {move || {
                 if show_menu() {
-                    view! { <Menu canvas_position canvas_zoom/> }.into_view()
+                    view! { <Menu players set_players canvas_position canvas_zoom/> }.into_view()
                 } else {
                     view! {}.into_view()
                 }
             }}
-            <Players canvas_position canvas_zoom ctrl_pressed authorized/>
+
+            <Players players set_players canvas_position canvas_zoom ctrl_pressed authorized/>
         </Show>
     }
 }
 
 #[component]
 fn Players(
+    players: ReadSignal<IndexMap<String, Player>>,
+    set_players: WriteSignal<IndexMap<String, Player>>,
     canvas_position: ReadSignal<(i32, i32)>,
     canvas_zoom: ReadSignal<f32>,
     ctrl_pressed: ReadSignal<bool>,
     authorized: ReadSignal<bool>,
 ) -> impl IntoView {
     let owner = leptos::Owner::current().expect("there should be an owner");
-    let (players, set_players) = create_signal(VecDeque::<Player>::new());
     let (move_click, set_move_click) = create_signal(false);
     let (resize_click, set_resize_click) = create_signal(false);
 
@@ -246,9 +251,9 @@ fn Players(
 
     let send_set_position = {
         let websocket = websocket.clone();
-        move |player_idx: usize, x: i32, y: i32| {
+        move |player_name: String, x: i32, y: i32| {
             let message = Message::SetPosition {
-                player_idx,
+                player_name,
                 new_position: Position { x, y },
             };
             if let ConnectionReadyState::Open = websocket.ready_state.get() {
@@ -259,9 +264,9 @@ fn Players(
         }
     };
 
-    let send_set_size = move |player_idx: usize, width: i32, height: Option<i32>| {
+    let send_set_size = move |player_name: String, width: i32, height: Option<i32>| {
         let message = Message::SetSize {
-            player_idx,
+            player_name,
             width,
             height,
         };
@@ -275,7 +280,7 @@ fn Players(
     let move_mouse = move |width: RwSignal<i32>,
                            height: RwSignal<Option<i32>>,
                            position: RwSignal<Position>,
-                           i: usize,
+                           name: RwSignal<String>,
                            event: leptos::ev::MouseEvent| {
         event.prevent_default();
 
@@ -286,7 +291,7 @@ fn Players(
             position.update(|pos| {
                 pos.x += (event.movement_x() as f32 / canvas_zoom()) as i32;
                 pos.y += (event.movement_y() as f32 / canvas_zoom()) as i32;
-                send_set_position(i, pos.x, pos.y);
+                send_set_position(name(), pos.x, pos.y);
             });
         } else if resize_click() {
             width.update(|current_width| {
@@ -305,7 +310,7 @@ fn Players(
                     );
                 }
             });
-            send_set_size(i, width.get_untracked(), height.get_untracked());
+            send_set_size(name(), width.get_untracked(), height.get_untracked());
         }
     };
 
@@ -322,16 +327,22 @@ fn Players(
 
     view! {
         <For
-            each=move || players().into_iter().enumerate()
-            key=|(i, _)| *i
-            children=move |(i, player): (usize, Player)| {
+            each=move || players().into_iter().rev()
+            key=|(name, _)| name.clone()
+            children=move |(_name, player): (String, Player)| {
                 view! {
                     <div
                         on:mousedown=start_moving_player
                         on:mousemove={
                             let move_mouse = move_mouse.clone();
                             move |event| {
-                                move_mouse(player.width, player.height, player.position, i, event)
+                                move_mouse(
+                                    player.width,
+                                    player.height,
+                                    player.position,
+                                    player.name,
+                                    event,
+                                )
                             }
                         }
 
@@ -347,14 +358,25 @@ fn Players(
 
                         style="position: absolute; z-index: 2;"
                         style:left=move || {
-                            format!("{}px", (player.position.get().x + canvas_position().0) as f32 * canvas_zoom())
+                            format!(
+                                "{}px",
+                                (player.position.get().x + canvas_position().0) as f32
+                                    * canvas_zoom(),
+                            )
                         }
 
                         style:top=move || {
-                            format!("{}px", (player.position.get().y + canvas_position().1) as f32 * canvas_zoom())
+                            format!(
+                                "{}px",
+                                (player.position.get().y + canvas_position().1) as f32
+                                    * canvas_zoom(),
+                            )
                         }
 
-                        style:width=move || format!("{}px", player.width.get() as f32 * canvas_zoom())
+                        style:width=move || {
+                            format!("{}px", player.width.get() as f32 * canvas_zoom())
+                        }
+
                         style:height=move || {
                             if let Some(height) = player.height.get() {
                                 format!("{}px", height as f32 * canvas_zoom())
@@ -364,19 +386,23 @@ fn Players(
                         }
 
                         style:outline=move || {
-                            if resize_click() || move_click() {
-                                format!("3px solid black")
-                            } else {
-                                String::new()
-                            }
+                            if resize_click() || move_click() { "3px solid black" } else { "" }
                         }
                     >
+
                         {move || {
                             let file_type = player.file_type.get();
                             if file_type.starts_with("video") {
                                 view! {
                                     <video
                                         style="width: 100%; height: 100%;"
+                                        style:outline= move || {
+                                            if player.is_selected.get() {
+                                                "3px solid black"
+                                            } else {
+                                                ""
+                                            }
+                                        }
                                         autoplay
                                         loop
                                         src=player.url.get()
@@ -387,6 +413,13 @@ fn Players(
                                 view! {
                                     <img
                                         style="width: 100%; height: 100%;"
+                                        style:outline= move || {
+                                            if player.is_selected.get() {
+                                                "3px solid black"
+                                            } else {
+                                                ""
+                                            }
+                                        }
                                         autoplay
                                         loop
                                         src=player.url.get()
@@ -406,15 +439,21 @@ fn Players(
 }
 
 #[component]
-fn Menu(canvas_position: ReadSignal<(i32, i32)>, canvas_zoom: ReadSignal<f32>) -> impl IntoView {
+fn Menu(
+    players: ReadSignal<IndexMap<String, Player>>,
+    set_players: WriteSignal<IndexMap<String, Player>>,
+    canvas_position: ReadSignal<(i32, i32)>,
+    canvas_zoom: ReadSignal<f32>,
+) -> impl IntoView {
     let websocket = expect_context::<WebsocketContext>();
     let (screen_size, set_screen_size) = create_signal(ScreenSize::default());
 
     let new_player = {
         let websocket = websocket.clone();
-        move |src_url, file_type, x, y, width, height| {
+        move |name, src_url, file_type, x, y, width, height| {
             websocket.send(
                 bincode::serialize(&Message::NewPlayer {
+                    name,
                     src_url,
                     file_type,
                     position: Position::new(x, y),
@@ -456,12 +495,33 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>, canvas_zoom: ReadSignal<f32>) -
 
                                 let src = format!("data:{};base64,{base64}", file.type_());
 
-                                new_player(src, file.type_(), 100, 100, 500, None);
+                                new_player(file.name(), src, file.type_(), 100, 100, 500, None);
                             }
                         });
                     }
                 }
             }
+        }
+    };
+
+    let delete = {
+        let websocket = websocket.clone();
+        move |player_name| {
+            websocket.send(bincode::serialize(&Message::DeletePlayer { player_name }).unwrap());
+        }
+    };
+
+    let move_up = {
+        let websocket = websocket.clone();
+        move |player_name| {
+            websocket.send(bincode::serialize(&Message::MovePlayerUp { player_name }).unwrap());
+        }
+    };
+
+    let move_down = {
+        let websocket = websocket.clone();
+        move |player_name| {
+            websocket.send(bincode::serialize(&Message::MovePlayerDown { player_name }).unwrap());
         }
     };
 
@@ -507,6 +567,62 @@ fn Menu(canvas_position: ReadSignal<(i32, i32)>, canvas_zoom: ReadSignal<f32>) -
                     }
                 }
             />
+
+        </div>
+
+        <div style="height: 100vh; width: 20vw; background: #535594; position: absolute; left: 0; top: 0; z-index: 5000; margin: 0; padding: 0; box-sizing: border-box;">
+            <ul style="width: 100%; margin: 0; padding: 0; box-sizing: border-box;">
+                <For
+                    each=move || players().into_iter()
+                    key=|(name, _)| name.clone()
+                    children=move |(name, player): (String, Player)| {
+                        view! {
+                            <li
+                                style="list-style: none; width: 100%; margin: 0; padding: 0; box-sizing: border-box;"
+                                style:border=move || {
+                                    if player.is_selected.get() { "3px solid black" } else { "" }
+                                }
+                            >
+                                <div on:click={
+                                    let name = name.clone();
+                                    move |_event| {
+                                        players()
+                                            .iter()
+                                            .for_each(|(n, p)| {
+                                                if *n != name {
+                                                    p.is_selected.set(false)
+                                                } else {
+                                                    p.is_selected
+                                                        .update(|selected| {
+                                                            *selected = !*selected;
+                                                        });
+                                                }
+                                            });
+                                    }
+                                }>
+                                    <span>{name.clone()}</span>
+                                    <button on:click={
+                                        let move_up = move_up.clone();
+                                        let name = name.clone();
+                                        move |_e| move_up(name.clone())
+                                    }>"Move up"</button>
+                                    <button on:click={
+                                        let move_down = move_down.clone();
+                                        let name = name.clone();
+                                        move |_e| move_down(name.clone())
+                                    }>"Move down"</button>
+                                    <button on:click={
+                                        let delete = delete.clone();
+                                        let name = name.clone();
+                                        move |_e| delete(name.clone())
+                                    }>"Delete"</button>
+                                </div>
+                            </li>
+                        }
+                    }
+                />
+
+            </ul>
         </div>
     }
 }
