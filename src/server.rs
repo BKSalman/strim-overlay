@@ -172,9 +172,9 @@ pub mod ssr {
 
                                         let _ = state.broadcaster.send((socket_id, event.clone()));
 
-                                        let event = bincode::serialize(&event).unwrap();
+                                        // let event = bincode::serialize(&event).unwrap();
 
-                                        let _ = socket.send(Message::Binary(event)).await;
+                                        // let _ = socket.send(Message::Binary(event)).await;
                                     },
                                     OverlayMessage::DeletePlayer { player_name } => {
                                         let mut players = state.players.write().await;
