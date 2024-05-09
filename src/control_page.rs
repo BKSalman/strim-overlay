@@ -111,7 +111,7 @@ pub fn ControlPage() -> impl IntoView {
     });
 
     let (canvas_move_click, set_canvas_move_click) = create_signal(false);
-    let (canvas_position, set_canvas_position) = create_signal((0, 0));
+    let (canvas_position, set_canvas_position) = create_signal(Position { x: 0, y: 0 });
     let (canvas_zoom, set_canvas_zoom) = create_signal(1.0f32);
     let (space_pressed, set_space_pressed) = create_signal(false);
     let (ctrl_pressed, set_ctrl_pressed) = create_signal(false);
@@ -163,8 +163,8 @@ pub fn ControlPage() -> impl IntoView {
         if canvas_move_click() {
             event.prevent_default();
             set_canvas_position.update(|current_pos| {
-                current_pos.0 += (event.movement_x() as f32 / canvas_zoom()) as i32;
-                current_pos.1 += (event.movement_y() as f32 / canvas_zoom()) as i32;
+                current_pos.x += (event.movement_x() as f32 / canvas_zoom()) as i32;
+                current_pos.y += (event.movement_y() as f32 / canvas_zoom()) as i32;
             });
         }
     });
@@ -200,6 +200,11 @@ pub fn ControlPage() -> impl IntoView {
 
     view! {
         <Show when=move || authorized() fallback=fallback_view>
+        <div
+            style:cursor=move || {
+                if canvas_move_click() { "grabbing" } else if space_pressed() { "grab" } else { "" }
+            }
+        >
             {move || {
                 if show_menu() {
                     view! { <Menu players set_players canvas_position canvas_zoom/> }.into_view()
@@ -209,6 +214,7 @@ pub fn ControlPage() -> impl IntoView {
             }}
 
             <Players players set_players canvas_position canvas_zoom ctrl_pressed authorized/>
+        </div>
         </Show>
     }
 }
@@ -217,7 +223,7 @@ pub fn ControlPage() -> impl IntoView {
 fn Players(
     players: ReadSignal<IndexMap<String, Player>>,
     set_players: WriteSignal<IndexMap<String, Player>>,
-    canvas_position: ReadSignal<(i32, i32)>,
+    canvas_position: ReadSignal<Position>,
     canvas_zoom: ReadSignal<f32>,
     ctrl_pressed: ReadSignal<bool>,
     authorized: ReadSignal<bool>,
@@ -376,7 +382,7 @@ fn Players(
                         style:left=move || {
                             format!(
                                 "{}px",
-                                (player.position.get().x + canvas_position().0) as f32
+                                (player.position.get().x + canvas_position().x) as f32
                                     * canvas_zoom(),
                             )
                         }
@@ -384,7 +390,7 @@ fn Players(
                         style:top=move || {
                             format!(
                                 "{}px",
-                                (player.position.get().y + canvas_position().1) as f32
+                                (player.position.get().y + canvas_position().y) as f32
                                     * canvas_zoom(),
                             )
                         }
@@ -462,7 +468,7 @@ fn Players(
 fn Menu(
     players: ReadSignal<IndexMap<String, Player>>,
     set_players: WriteSignal<IndexMap<String, Player>>,
-    canvas_position: ReadSignal<(i32, i32)>,
+    canvas_position: ReadSignal<Position>,
     canvas_zoom: ReadSignal<f32>,
 ) -> impl IntoView {
     let websocket = expect_context::<WebsocketContext>();
@@ -560,8 +566,8 @@ fn Menu(
             style="z-index: -5000; outline: 3px solid black; position: absolute;"
             style:width=move || format!("{}px", screen_size().width as f32 * canvas_zoom())
             style:height=move || format!("{}px", screen_size().height as f32 * canvas_zoom())
-            style:left=move || format!("{}px", canvas_position().0 as f32 * canvas_zoom())
-            style:top=move || format!("{}px", canvas_position().1 as f32 * canvas_zoom())
+            style:left=move || format!("{}px", canvas_position().x as f32 * canvas_zoom())
+            style:top=move || format!("{}px", canvas_position().y as f32 * canvas_zoom())
         >
             <p>"Screen border"</p>
             <label for="height">"Height"</label>
