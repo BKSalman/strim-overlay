@@ -110,19 +110,50 @@ pub fn ControlPage() -> impl IntoView {
         event.prevent_default();
     });
 
-    let _ = use_event_listener(use_window(), leptos::ev::keyup, move |event| {
-        if event.key() == "Escape" {
-            set_show_menu.update(|show| *show = !*show);
-        }
-    });
-
     let (canvas_move_click, set_canvas_move_click) = create_signal(false);
     let (canvas_position, set_canvas_position) = create_signal((0, 0));
     let (canvas_zoom, set_canvas_zoom) = create_signal(1.0f32);
+    let (space_pressed, set_space_pressed) = create_signal(false);
+    let (ctrl_pressed, set_ctrl_pressed) = create_signal(false);
+
+    let _ = use_event_listener(use_window(), leptos::ev::keyup, move |event| {
+        if event.code() == "Escape" {
+            set_show_menu.update(|show| *show = !*show);
+        } else if event.code() == "Space" {
+            set_space_pressed(false);
+        } else if event.key() == "Control" {
+            set_ctrl_pressed(false);
+        }
+    });
+
+    let _ = use_event_listener(use_window(), leptos::ev::keydown, move |event| {
+        if event.code() == "Space" {
+            set_space_pressed(true);
+        } else if event.key() == "Control" {
+            set_ctrl_pressed(true);
+        }
+    });
+
+    let _ = use_event_listener(use_window(), leptos::ev::wheel, move |event| {
+        if event.delta_y() > 0. {
+            set_canvas_zoom.update(|current_zoom| {
+                if *current_zoom - 0.1 > 0. {
+                    *current_zoom -= 0.1;
+                }
+            });
+        } else {
+            set_canvas_zoom.update(|current_zoom| {
+                *current_zoom += 0.1;
+            });
+        }
+    });
 
     let _ = use_event_listener(use_window(), leptos::ev::mousedown, move |event| {
         // 1 = middle mouse button, aka. wheel button
         if event.button() == 1 {
+            event.prevent_default();
+            set_canvas_move_click(true);
+        } else if event.button() == 0 && space_pressed() {
             event.prevent_default();
             set_canvas_move_click(true);
         }
@@ -142,40 +173,15 @@ pub fn ControlPage() -> impl IntoView {
         if event.button() == 1 {
             event.prevent_default();
             set_canvas_move_click(false);
+        } else if event.button() == 0 && space_pressed() {
+            event.prevent_default();
+            set_canvas_move_click(false);
         }
     });
 
     let _ = use_event_listener(use_window(), leptos::ev::mouseleave, move |event| {
         event.prevent_default();
         set_canvas_move_click(false);
-    });
-
-    let (ctrl_pressed, set_ctrl_pressed) = create_signal(false);
-
-    let _ = use_event_listener(use_window(), leptos::ev::keydown, move |event| {
-        if event.ctrl_key() {
-            set_ctrl_pressed(true);
-        }
-    });
-
-    let _ = use_event_listener(use_window(), leptos::ev::keyup, move |event| {
-        if !event.ctrl_key() {
-            set_ctrl_pressed(false);
-        }
-    });
-
-    let _ = use_event_listener(use_window(), leptos::ev::wheel, move |event| {
-        if event.delta_y() > 0. {
-            set_canvas_zoom.update(|current_zoom| {
-                if *current_zoom - 0.1 > 0. {
-                    *current_zoom -= 0.1;
-                }
-            });
-        } else {
-            set_canvas_zoom.update(|current_zoom| {
-                *current_zoom += 0.1;
-            });
-        }
     });
 
     let fallback_view = move || {
@@ -277,6 +283,8 @@ fn Players(
         }
     };
 
+    let (prev_mouse_pos, set_prev_mouse_pos) = create_signal(Position { x: 0, y: 0 });
+
     let move_mouse = move |width: RwSignal<i32>,
                            height: RwSignal<Option<i32>>,
                            position: RwSignal<Position>,
@@ -289,9 +297,15 @@ fn Players(
         event.prevent_default();
         if move_click() {
             position.update(|pos| {
-                pos.x += (event.movement_x() as f32 / canvas_zoom()) as i32;
-                pos.y += (event.movement_y() as f32 / canvas_zoom()) as i32;
+                let movement_x = event.x() - prev_mouse_pos().x;
+                let movement_y = event.y() - prev_mouse_pos().y;
+                pos.x += ((movement_x as f32) / canvas_zoom()) as i32;
+                pos.y += ((movement_y as f32) / canvas_zoom()) as i32;
                 send_set_position(name(), pos.x, pos.y);
+                set_prev_mouse_pos(Position {
+                    x: event.x(),
+                    y: event.y(),
+                });
             });
         } else if resize_click() {
             width.update(|current_width| {
@@ -314,17 +328,6 @@ fn Players(
         }
     };
 
-    let start_moving_player = move |event: MouseEvent| {
-        event.prevent_default();
-
-        if event.button() == 0 {
-            set_move_click(true);
-        } else if event.button() == 2 {
-            // 2 = right click
-            set_resize_click(true);
-        }
-    };
-
     view! {
         <For
             each=move || players().into_iter().rev()
@@ -332,7 +335,20 @@ fn Players(
             children=move |(_name, player): (String, Player)| {
                 view! {
                     <div
-                        on:mousedown=start_moving_player
+                        on:mousedown=move |event: MouseEvent| {
+                            event.prevent_default();
+
+                            if event.button() == 0 {
+                                set_move_click(true);
+                                set_prev_mouse_pos(Position {
+                                    x: event.x(),
+                                    y: event.y(),
+                                });
+                            } else if event.button() == 2 {
+                                // 2 = right click
+                                set_resize_click(true);
+                            }
+                        }
                         on:mousemove={
                             let move_mouse = move_mouse.clone();
                             move |event| {
@@ -387,6 +403,10 @@ fn Players(
 
                         style:outline=move || {
                             if resize_click() || move_click() { "3px solid black" } else { "" }
+                        }
+
+                        style:cursor=move || {
+                            if resize_click() || move_click() { "move" } else { "" }
                         }
                     >
 
