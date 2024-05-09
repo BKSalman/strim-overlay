@@ -58,8 +58,8 @@ pub fn ControlPage() -> impl IntoView {
                 .find_map(|s| s.strip_prefix("access_token="))
             {
                 set_access_token(Some(token.to_string()));
+                let _ = location().set_hash("");
             }
-            let _ = location().set_hash("");
         }
     });
 
