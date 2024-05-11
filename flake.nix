@@ -11,16 +11,23 @@
       url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    systems.url = "github:nix-systems/default";
   };
 
-  outputs = {nixpkgs, rust-overlay, crane, ...}:
+  outputs = inputs:
+    inputs.flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = import inputs.systems;
+      # imports = [
+      #   inputs.treefmt-nix.flakeModule
+      # ];
+      perSystem = { config, pkgs, lib, system, ... }:
       let 
-        system = "x86_64-linux";
-        pkgs = import nixpkgs { inherit system; overlays = [ rust-overlay.overlays.default ]; };
+        pkgs = import inputs.nixpkgs { inherit system; overlays = [ inputs.rust-overlay.overlays.default ]; };
 
         rustToolChain = (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml);
 
-        craneLib = (crane.mkLib pkgs).overrideToolchain rustToolChain;
+        craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolChain;
 
         src = pkgs.lib.cleanSourceWith {
               src = ./.;
@@ -73,7 +80,7 @@
           package = craneLib.buildPackage (buildArgs);
       in
     with pkgs; {
-      devShells.${system}.default = mkShell {
+      devShells.default = mkShell {
 
           packages = [
             rustToolChain
@@ -91,13 +98,7 @@
           ];
         };
 
-      packages.${system}.default = package;
-
-      overlays.${system}.default = final: prev: {
-          inherit (packages.${system}) default;
-        };
-
-      formatter.x86_64-linux = legacyPackages.${system}.nixpkgs-fmt;
+      packages.default = package;
     };
+  };
 }
-
