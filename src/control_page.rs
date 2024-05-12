@@ -207,7 +207,7 @@ pub fn ControlPage() -> impl IntoView {
         >
             {move || {
                 if show_menu() {
-                    view! { <Menu players set_players canvas_position canvas_zoom/> }.into_view()
+                    view! { <Menu players canvas_position canvas_zoom/> }.into_view()
                 } else {
                     view! {}.into_view()
                 }
@@ -414,6 +414,10 @@ fn Players(
                         style:cursor=move || {
                             if resize_click() || move_click() { "move" } else { "" }
                         }
+
+                        style:transform=move || {
+                            if player.horizontal_flip.get() { "scaleX(-1)" } else { "" }
+                        }
                     >
 
                         {move || {
@@ -467,7 +471,6 @@ fn Players(
 #[component]
 fn Menu(
     players: ReadSignal<IndexMap<String, Player>>,
-    set_players: WriteSignal<IndexMap<String, Player>>,
     canvas_position: ReadSignal<Position>,
     canvas_zoom: ReadSignal<f32>,
 ) -> impl IntoView {
@@ -551,6 +554,19 @@ fn Menu(
         }
     };
 
+    let flip = {
+        let websocket = websocket.clone();
+        move |player_name, is_flipped| {
+            websocket.send(
+                bincode::serialize(&Message::FlipPlayerHorizontally {
+                    player_name,
+                    is_flipped,
+                })
+                .unwrap(),
+            );
+        }
+    };
+
     view! {
         <h1>{move || format!("State: {}", websocket.ready_state.get())}</h1>
         <button on:click={
@@ -604,44 +620,54 @@ fn Menu(
                     children=move |(name, player): (String, Player)| {
                         view! {
                             <li
-                                style="list-style: none; width: 100%; margin: 0; padding: 0; box-sizing: border-box;"
+                                style="display: flex; justify-content: space-between; list-style: none; width: 100%; margin: 0; padding: 0; box-sizing: border-box;"
                                 style:border=move || {
                                     if player.is_selected.get() { "3px solid black" } else { "" }
                                 }
                             >
-                                <div on:click={
-                                    let name = name.clone();
-                                    move |_event| {
-                                        players()
-                                            .iter()
-                                            .for_each(|(n, p)| {
-                                                if *n != name {
-                                                    p.is_selected.set(false)
-                                                } else {
-                                                    p.is_selected
-                                                        .update(|selected| {
-                                                            *selected = !*selected;
-                                                        });
-                                                }
-                                            });
+                                <span style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">{name.clone()}</span>
+                                <div
+                                    on:click={
+                                        let name = name.clone();
+                                        move |_event| {
+                                            players()
+                                                .iter()
+                                                .for_each(|(n, p)| {
+                                                    if *n != name {
+                                                        p.is_selected.set(false)
+                                                    } else {
+                                                        p.is_selected
+                                                            .update(|selected| {
+                                                                *selected = !*selected;
+                                                            });
+                                                    }
+                                                });
+                                        }
                                     }
-                                }>
-                                    <span>{name.clone()}</span>
+                                >
                                     <button on:click={
                                         let move_up = move_up.clone();
                                         let name = name.clone();
                                         move |_e| move_up(name.clone())
-                                    }>"Move up"</button>
+                                    }>"↑"</button>
                                     <button on:click={
                                         let move_down = move_down.clone();
                                         let name = name.clone();
                                         move |_e| move_down(name.clone())
-                                    }>"Move down"</button>
+                                    }>"↓"</button>
                                     <button on:click={
                                         let delete = delete.clone();
                                         let name = name.clone();
                                         move |_e| delete(name.clone())
-                                    }>"Delete"</button>
+                                    }>"✕"</button>
+                                    <button on:click={
+                                        let flip = flip.clone();
+                                        let name = name.clone();
+                                        move |_e| {
+                                            player.horizontal_flip.update(|is_flipped| *is_flipped = !*is_flipped);
+                                            flip(name.clone(), player.horizontal_flip.get());
+                                        }
+                                    }>"↔"</button>
                                 </div>
                             </li>
                         }

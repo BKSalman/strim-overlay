@@ -167,6 +167,16 @@ pub fn handle_websocket_message(
                     players.swap_indices(s, s + 1);
                 }
             }),
+            Event::FlipPlayerHorizontally {
+                player_name,
+                is_flipped,
+            } => set_players.update(|players| {
+                if let Some(player) = players.get_mut(&player_name) {
+                    player
+                        .horizontal_flip
+                        .update(|flipped| *flipped = is_flipped);
+                }
+            }),
             Event::Pong => {}
         }
     }

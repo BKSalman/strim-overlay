@@ -177,6 +177,10 @@ pub mod ssr {
                                         // let _ = socket.send(Message::Binary(event)).await;
                                     },
                                     OverlayMessage::DeletePlayer { player_name } => {
+                                        if !authorized {
+                                            logging::log!("DeletePlayer not authorized");
+                                            continue;
+                                        }
                                         let mut players = state.players.write().await;
                                         if players.shift_remove(&player_name).is_some() {
                                             let event = Event::PlayerDeleted { player_name };
@@ -188,6 +192,10 @@ pub mod ssr {
                                         }
                                     },
                                     OverlayMessage::MovePlayerUp { player_name } => {
+                                        if !authorized {
+                                            logging::log!("MovePlayerUp not authorized");
+                                            continue;
+                                        }
                                         let mut players = state.players.write().await;
                                         if let Some(s) = players.get_index_of(&player_name) {
                                             if s > 0 {
@@ -203,6 +211,10 @@ pub mod ssr {
                                         }
                                     },
                                     OverlayMessage::MovePlayerDown { player_name } => {
+                                        if !authorized {
+                                            logging::log!("MovePlayerDown not authorized");
+                                            continue;
+                                        }
                                         let mut players = state.players.write().await;
                                         if let Some(s) = players.get_index_of(&player_name) {
                                             if players.len() > s + 1 {
@@ -218,6 +230,22 @@ pub mod ssr {
                                             }
                                         }
                                     },
+                                    OverlayMessage::FlipPlayerHorizontally { player_name, is_flipped } => {
+                                        if !authorized {
+                                            logging::log!("FlipPlayerHorizontally not authorized");
+                                            continue;
+                                        }
+                                        let mut players = state.players.write().await;
+                                        let Some(player) = players.get_mut(&player_name) else {
+                                            continue;
+                                        };
+
+                                        player.horizontal_flip = is_flipped;
+
+                                        let event = Event::FlipPlayerHorizontally { player_name, is_flipped };
+
+                                        let _ = state.broadcaster.send((socket_id, event.clone()));
+                                    }
                                     OverlayMessage::Ping => {
                                         #[cfg(debug_assertions)]
                                         logging::log!("socket: {socket_id} ping");
@@ -282,6 +310,7 @@ pub mod ssr {
             position,
             width,
             height,
+            horizontal_flip: false,
         };
         logging::log!("adding new player: {}", player.file_type);
 
