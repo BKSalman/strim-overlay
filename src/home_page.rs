@@ -74,6 +74,10 @@ fn Players() -> impl IntoView {
                                 String::from("auto")
                             }
                         }
+
+                        style:transform=move || {
+                            if player.horizontal_flip.get() { "scaleX(-1)" } else { "" }
+                        }
                     >
 
                         {move || {
