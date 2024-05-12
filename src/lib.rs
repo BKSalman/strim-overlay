@@ -38,6 +38,7 @@ pub struct Player {
     /// None means this should keep the aspect ratio of the player and set the height to auto
     pub height: RwSignal<Option<i32>>,
     pub is_selected: RwSignal<bool>,
+    pub horizontal_flip: RwSignal<bool>,
 }
 
 impl From<ServerPlayer> for Player {
@@ -50,6 +51,7 @@ impl From<ServerPlayer> for Player {
             width: RwSignal::new(value.width),
             height: RwSignal::new(value.height),
             is_selected: RwSignal::new(false),
+            horizontal_flip: RwSignal::new(value.horizontal_flip),
         }
     }
 }
@@ -63,6 +65,7 @@ pub struct ServerPlayer {
     pub width: i32,
     /// None means this should keep the aspect ratio of the player and set the height to auto
     pub height: Option<i32>,
+    horizontal_flip: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -121,6 +124,10 @@ pub enum Message {
     MovePlayerDown {
         player_name: String,
     },
+    FlipPlayerHorizontally {
+        player_name: String,
+        is_flipped: bool,
+    },
 }
 
 /// Events from backend to frontend
@@ -146,5 +153,9 @@ pub enum Event {
     },
     PlayerMovedUp {
         player_name: String,
+    },
+    FlipPlayerHorizontally {
+        player_name: String,
+        is_flipped: bool,
     },
 }
