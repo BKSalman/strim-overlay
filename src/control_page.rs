@@ -619,6 +619,23 @@ fn Menu(
                     children=move |(name, player): (String, Player)| {
                         view! {
                             <li
+                                on:click={
+                                    let name = name.clone();
+                                    move |_event| {
+                                        players()
+                                            .iter()
+                                            .for_each(|(n, p)| {
+                                                if *n != name {
+                                                    p.is_selected.set(false)
+                                                } else {
+                                                    p.is_selected
+                                                        .update(|selected| {
+                                                            *selected = !*selected;
+                                                        });
+                                                }
+                                            });
+                                    }
+                                }
                                 style="display: flex; align-items: center; justify-content: space-between; list-style: none; width: 100%; margin: 0; padding: 0; box-sizing: border-box;"
                                 style:border=move || {
                                     if player.is_selected.get() { "3px solid black" } else { "" }
@@ -633,23 +650,6 @@ fn Menu(
                                 </span>
                                 <div
                                     style="display: flex; align-items: center; flex-shrink: 0; height: 1.5rem;"
-                                    on:click={
-                                        let name = name.clone();
-                                        move |_event| {
-                                            players()
-                                                .iter()
-                                                .for_each(|(n, p)| {
-                                                    if *n != name {
-                                                        p.is_selected.set(false)
-                                                    } else {
-                                                        p.is_selected
-                                                            .update(|selected| {
-                                                                *selected = !*selected;
-                                                            });
-                                                    }
-                                                });
-                                        }
-                                    }
                                 >
                                     <button
                                         on:click={
