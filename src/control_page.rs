@@ -200,21 +200,19 @@ pub fn ControlPage() -> impl IntoView {
 
     view! {
         <Show when=move || authorized() fallback=fallback_view>
-        <div
-            style:cursor=move || {
+            <div style:cursor=move || {
                 if canvas_move_click() { "grabbing" } else if space_pressed() { "grab" } else { "" }
-            }
-        >
-            {move || {
-                if show_menu() {
-                    view! { <Menu players canvas_position canvas_zoom/> }.into_view()
-                } else {
-                    view! {}.into_view()
-                }
-            }}
+            }>
 
-            <Players players set_players canvas_position canvas_zoom ctrl_pressed authorized/>
-        </div>
+                {move || {
+                    if show_menu() {
+                        view! { <Menu players canvas_position canvas_zoom/> }.into_view()
+                    } else {
+                        view! {}.into_view()
+                    }
+                }}
+                <Players players set_players canvas_position canvas_zoom ctrl_pressed authorized/>
+            </div>
         </Show>
     }
 }
@@ -343,7 +341,6 @@ fn Players(
                     <div
                         on:mousedown=move |event: MouseEvent| {
                             event.prevent_default();
-
                             if event.button() == 0 {
                                 set_move_click(true);
                                 set_prev_mouse_pos(Position {
@@ -351,10 +348,10 @@ fn Players(
                                     y: event.y(),
                                 });
                             } else if event.button() == 2 {
-                                // 2 = right click
                                 set_resize_click(true);
                             }
                         }
+
                         on:mousemove={
                             let move_mouse = move_mouse.clone();
                             move |event| {
@@ -426,13 +423,14 @@ fn Players(
                                 view! {
                                     <video
                                         style="width: 100%; height: 100%;"
-                                        style:outline= move || {
+                                        style:outline=move || {
                                             if player.is_selected.get() {
                                                 "3px solid black"
                                             } else {
                                                 ""
                                             }
                                         }
+
                                         autoplay
                                         loop
                                         src=player.url.get()
@@ -443,13 +441,14 @@ fn Players(
                                 view! {
                                     <img
                                         style="width: 100%; height: 100%;"
-                                        style:outline= move || {
+                                        style:outline=move || {
                                             if player.is_selected.get() {
                                                 "3px solid black"
                                             } else {
                                                 ""
                                             }
                                         }
+
                                         autoplay
                                         loop
                                         src=player.url.get()
@@ -577,7 +576,7 @@ fn Menu(
         <button on:click={
             let get_all_players = get_all_players.clone();
             move |_| get_all_players()
-        }>"All players"</button>
+        }>"Refresh"</button>
         <div
             style="z-index: -5000; outline: 3px solid black; position: absolute;"
             style:width=move || format!("{}px", screen_size().width as f32 * canvas_zoom())
@@ -620,14 +619,20 @@ fn Menu(
                     children=move |(name, player): (String, Player)| {
                         view! {
                             <li
-                                style="display: flex; justify-content: space-between; list-style: none; width: 100%; margin: 0; padding: 0; box-sizing: border-box;"
+                                style="display: flex; align-items: center; justify-content: space-between; list-style: none; width: 100%; margin: 0; padding: 0; box-sizing: border-box;"
                                 style:border=move || {
                                     if player.is_selected.get() { "3px solid black" } else { "" }
                                 }
                             >
-                                <span style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">{name.clone()}</span>
+
+                                <span
+                                    title=name.clone()
+                                    style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis;"
+                                >
+                                    {name.clone()}
+                                </span>
                                 <div
-                                    style="flex-shrink: 0;"
+                                    style="display: flex; align-items: center; flex-shrink: 0; height: 1.5rem;"
                                     on:click={
                                         let name = name.clone();
                                         move |_event| {
@@ -646,29 +651,59 @@ fn Menu(
                                         }
                                     }
                                 >
-                                    <button on:click={
-                                        let move_up = move_up.clone();
-                                        let name = name.clone();
-                                        move |_e| move_up(name.clone())
-                                    }>"↑"</button>
-                                    <button on:click={
-                                        let move_down = move_down.clone();
-                                        let name = name.clone();
-                                        move |_e| move_down(name.clone())
-                                    }>"↓"</button>
-                                    <button on:click={
-                                        let delete = delete.clone();
-                                        let name = name.clone();
-                                        move |_e| delete(name.clone())
-                                    }>"✕"</button>
-                                    <button on:click={
-                                        let flip = flip.clone();
-                                        let name = name.clone();
-                                        move |_e| {
-                                            player.horizontal_flip.update(|is_flipped| *is_flipped = !*is_flipped);
-                                            flip(name.clone(), player.horizontal_flip.get());
+                                    <button
+                                        on:click={
+                                            let move_up = move_up.clone();
+                                            let name = name.clone();
+                                            move |_e| move_up(name.clone())
                                         }
-                                    }>"↔"</button>
+
+                                        title="Move media up"
+                                        style="height: 100%;"
+                                    >
+                                        "↑"
+                                    </button>
+                                    <button
+                                        on:click={
+                                            let move_down = move_down.clone();
+                                            let name = name.clone();
+                                            move |_e| move_down(name.clone())
+                                        }
+
+                                        title="Move media down"
+                                        style="height: 100%;"
+                                    >
+                                        "↓"
+                                    </button>
+                                    <button
+                                        on:click={
+                                            let flip = flip.clone();
+                                            let name = name.clone();
+                                            move |_e| {
+                                                player
+                                                    .horizontal_flip
+                                                    .update(|is_flipped| *is_flipped = !*is_flipped);
+                                                flip(name.clone(), player.horizontal_flip.get());
+                                            }
+                                        }
+
+                                        title="Flip media horizontally"
+                                        style="height: 100%;"
+                                    >
+                                        "↔"
+                                    </button>
+                                    <button
+                                        on:click={
+                                            let delete = delete.clone();
+                                            let name = name.clone();
+                                            move |_e| delete(name.clone())
+                                        }
+
+                                        title="Remove media"
+                                        style="height: 100%;"
+                                    >
+                                        "🗑"
+                                    </button>
                                 </div>
                             </li>
                         }
