@@ -627,6 +627,7 @@ fn Menu(
                             >
                                 <span style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">{name.clone()}</span>
                                 <div
+                                    style="flex-shrink: 0;"
                                     on:click={
                                         let name = name.clone();
                                         move |_event| {
