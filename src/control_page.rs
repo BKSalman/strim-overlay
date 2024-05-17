@@ -599,7 +599,7 @@ fn Menu(
         </Show>
         </div>
 
-        <div style="height: 100vh; width: 20vw; background: #535594; position: absolute; left: 0; top: 0; z-index: 5000; margin: 0; padding: 0; box-sizing: border-box;">
+        <div style="height: 100vh; width: 20vw; background: #535594; position: absolute; left: 0; top: 0; z-index: 5000; margin: 0; padding: 0; box-sizing: border-box; opacity: 90%;">
             <div>
                 <div>
                     <label for="show-channel-player">"Show player"</label>
