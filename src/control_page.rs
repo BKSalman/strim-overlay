@@ -476,7 +476,8 @@ fn Menu(
     let websocket = expect_context::<WebsocketContext>();
     let (screen_size, set_screen_size) = create_signal(ScreenSize::default());
     let (channel, set_channel) = create_signal(String::from("sadmadladsalman"));
-    let (show_channel_player, set_show_channel_player) = create_signal(true);
+    let (show_stream_player, set_show_stream_player) = create_signal(true);
+    let (interactive_stream_player, set_interactive_stream_player) = create_signal(false);
 
     let new_player = {
         let websocket = websocket.clone();
@@ -534,6 +535,172 @@ fn Menu(
         }
     };
 
+    #[cfg(not(debug_assertions))]
+    let iframe_parent = "overlay.bksalman.com";
+    #[cfg(debug_assertions)]
+    let iframe_parent = "localhost";
+
+    view! {
+        <h1>{move || format!("State: {}", websocket.ready_state.get())}</h1>
+        <button on:click={
+            let on_file_submit = on_file_submit.clone();
+            move |_event| on_file_submit()
+        }>"Add"</button>
+        <input type="file" accept="video/webm,image/*" node_ref=input_element/>
+        <button on:click={
+            let get_all_players = get_all_players.clone();
+            move |_| get_all_players()
+        }>"Refresh"</button>
+        <div
+            style="z-index: -5000; outline: 3px solid black; position: absolute;"
+            style:width=move || format!("{}px", screen_size().width as f32 * canvas_zoom())
+            style:height=move || format!("{}px", screen_size().height as f32 * canvas_zoom())
+            style:left=move || format!("{}px", canvas_position().x as f32 * canvas_zoom())
+            style:top=move || format!("{}px", canvas_position().y as f32 * canvas_zoom())
+        >
+            <Show when=move || show_stream_player()>
+                <iframe
+                    style="pointer-events: none; opacity: 60%;"
+                    style:pointer-events=move || {
+                        if !interactive_stream_player() { "none" } else { "" }
+                    }
+
+                    src=move || {
+                        format!(
+                            "https://player.twitch.tv/?channel={}&parent={iframe_parent}&muted=true&autoplay=true",
+                            channel(),
+                        )
+                    }
+
+                    height="100%"
+                    width="100%"
+                    autoplay
+                    muted
+                ></iframe>
+            </Show>
+        </div>
+
+        <div style="height: 100vh; width: 20vw; background: #535594; position: absolute; left: 0; top: 0; z-index: 5000; margin: 0; padding: 0; box-sizing: border-box; opacity: 90%;">
+            <StreamPlayerSettings
+                show_stream_player
+                set_show_stream_player
+                interactive_stream_player
+                set_interactive_stream_player
+                channel
+                set_channel
+            />
+
+            <hr/>
+
+            <ScreenBorder screen_size set_screen_size/>
+
+            <hr/>
+
+            <PlayersList players/>
+        </div>
+    }
+}
+
+#[component]
+fn StreamPlayerSettings(
+    show_stream_player: ReadSignal<bool>,
+    set_show_stream_player: WriteSignal<bool>,
+    interactive_stream_player: ReadSignal<bool>,
+    set_interactive_stream_player: WriteSignal<bool>,
+    channel: ReadSignal<String>,
+    set_channel: WriteSignal<String>,
+) -> impl IntoView {
+    view! {
+        <div>
+            <div style="display: flex; justify-content: space-around">
+                <div>
+                    <label for="show-channel-player">"Show player"</label>
+                    <input
+                        id="show-channel-player"
+                        type="checkbox"
+                        checked=move || show_stream_player()
+                        on:change=move |event| {
+                            set_show_stream_player(event_target_checked(&event));
+                        }
+                    />
+
+                </div>
+
+                <div>
+                    <label
+                        for="interactive-channel-player"
+                        title="When this is enabled the scroll won't work when the mouse is over the player"
+                    >
+                        "Interactive player"
+                    </label>
+                    <input
+                        title="When this is enabled the scroll won't work when the mouse is over the player"
+                        id="interactive-channel-player"
+                        type="checkbox"
+                        checked=move || interactive_stream_player()
+                        on:change=move |event| {
+                            set_interactive_stream_player(event_target_checked(&event));
+                        }
+                    />
+
+                </div>
+
+            </div>
+            <div>
+                <label for="channel">"Channel: "</label>
+                <input
+                    id="channel"
+                    value=move || channel()
+                    on:input=move |event| {
+                        let value = event_target_value(&event);
+                        set_channel(value);
+                    }
+                />
+
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn ScreenBorder(
+    screen_size: ReadSignal<ScreenSize>,
+    set_screen_size: WriteSignal<ScreenSize>,
+) -> impl IntoView {
+    view! {
+        <div>
+            <p>"Screen border"</p>
+            <label for="height">"Height"</label>
+            <input
+                id="height"
+                type="number"
+                value=move || screen_size().height
+                on:input=move |event| {
+                    if let Ok(new_height) = event_target_value(&event).parse::<i32>() {
+                        set_screen_size.update(|size| size.height = new_height);
+                    }
+                }
+            />
+
+            <label for="width">"Width"</label>
+            <input
+                id="width"
+                type="number"
+                value=move || screen_size().width
+                on:input=move |event| {
+                    if let Ok(new_width) = event_target_value(&event).parse::<i32>() {
+                        set_screen_size.update(|size| size.width = new_width);
+                    }
+                }
+            />
+
+        </div>
+    }
+}
+
+#[component]
+fn PlayersList(players: ReadSignal<IndexMap<String, Player>>) -> impl IntoView {
+    let websocket = expect_context::<WebsocketContext>();
     let delete = {
         let websocket = websocket.clone();
         move |player_name| {
@@ -569,192 +736,103 @@ fn Menu(
     };
 
     view! {
-        <h1>{move || format!("State: {}", websocket.ready_state.get())}</h1>
-        <button on:click={
-            let on_file_submit = on_file_submit.clone();
-            move |_event| on_file_submit()
-        }>"Add"</button>
-        <input type="file" accept="video/webm,image/*" node_ref=input_element/>
-        <button on:click={
-            let get_all_players = get_all_players.clone();
-            move |_| get_all_players()
-        }>"Refresh"</button>
-        <div
-            style="z-index: -5000; outline: 3px solid black; position: absolute;"
-            style:width=move || format!("{}px", screen_size().width as f32 * canvas_zoom())
-            style:height=move || format!("{}px", screen_size().height as f32 * canvas_zoom())
-            style:left=move || format!("{}px", canvas_position().x as f32 * canvas_zoom())
-            style:top=move || format!("{}px", canvas_position().y as f32 * canvas_zoom())
-        >
-        <Show when=move || show_channel_player()>
-            <iframe
-                style="pointer-events: none; opacity: 60%;"
-                src=move || format!("https://player.twitch.tv/?channel={}&parent=overlay.bksalman.com&muted=true&autoplay=true", channel())
-                height="100%"
-                width="100%"
-                autoplay
-                muted
-            >
-            </iframe>
-        </Show>
-        </div>
-
-        <div style="height: 100vh; width: 20vw; background: #535594; position: absolute; left: 0; top: 0; z-index: 5000; margin: 0; padding: 0; box-sizing: border-box; opacity: 90%;">
-            <div>
-                <div>
-                    <label for="show-channel-player">"Show player"</label>
-                    <input
-                        id="show-channel-player"
-                        type="checkbox"
-                        checked=move || show_channel_player()
-                        on:change=move |event| {
-                            set_show_channel_player(event_target_checked(&event));
-                        }
-                    />
-                </div>
-                <div>
-                    <label for="channel">"Channel: "</label>
-                    <input
-                        id="channel"
-                        value=move || channel()
-                        on:input=move |event| {
-                            let value = event_target_value(&event);
-                            set_channel(value);
-                        }
-                    />
-                </div>
-            </div>
-
-            <hr/>
-
-            <div>
-                <p>"Screen border"</p>
-                <label for="height">"Height"</label>
-                <input
-                    id="height"
-                    type="number"
-                    value=move || screen_size().height
-                    on:input=move |event| {
-                        if let Ok(new_height) = event_target_value(&event).parse::<i32>() {
-                            set_screen_size.update(|size| size.height = new_height);
-                        }
-                    }
-                />
-
-                <label for="width">"Width"</label>
-                <input
-                    id="width"
-                    type="number"
-                    value=move || screen_size().width
-                    on:input=move |event| {
-                        if let Ok(new_width) = event_target_value(&event).parse::<i32>() {
-                            set_screen_size.update(|size| size.width = new_width);
-                        }
-                    }
-                />
-            </div>
-
-            <hr/>
-
-            <ul style="width: 100%; margin: 0; padding: 0; box-sizing: border-box;">
-                <For
-                    each=move || players().into_iter()
-                    key=|(name, _)| name.clone()
-                    children=move |(name, player): (String, Player)| {
-                        view! {
-                            <li
-                                on:click={
-                                    let name = name.clone();
-                                    move |_event| {
-                                        players()
-                                            .iter()
-                                            .for_each(|(n, p)| {
-                                                if *n != name {
-                                                    p.is_selected.set(false)
-                                                } else {
-                                                    p.is_selected
-                                                        .update(|selected| {
-                                                            *selected = !*selected;
-                                                        });
-                                                }
-                                            });
-                                    }
-                                }
-                                style="display: flex; align-items: center; justify-content: space-between; list-style: none; width: 100%; margin: 0; padding: 0; box-sizing: border-box;"
-                                style:border=move || {
-                                    if player.is_selected.get() { "3px solid black" } else { "" }
-                                }
-                            >
-
-                                <span
-                                    title=name.clone()
-                                    style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis;"
-                                >
-                                    {name.clone()}
-                                </span>
-                                <div
-                                    style="display: flex; align-items: center; flex-shrink: 0; height: 1.5rem;"
-                                >
-                                    <button
-                                        on:click={
-                                            let move_up = move_up.clone();
-                                            let name = name.clone();
-                                            move |_e| move_up(name.clone())
-                                        }
-
-                                        title="Move media up"
-                                        style="height: 100%;"
-                                    >
-                                        "↑"
-                                    </button>
-                                    <button
-                                        on:click={
-                                            let move_down = move_down.clone();
-                                            let name = name.clone();
-                                            move |_e| move_down(name.clone())
-                                        }
-
-                                        title="Move media down"
-                                        style="height: 100%;"
-                                    >
-                                        "↓"
-                                    </button>
-                                    <button
-                                        on:click={
-                                            let flip = flip.clone();
-                                            let name = name.clone();
-                                            move |_e| {
-                                                player
-                                                    .horizontal_flip
-                                                    .update(|is_flipped| *is_flipped = !*is_flipped);
-                                                flip(name.clone(), player.horizontal_flip.get());
+        <ul style="width: 100%; margin: 0; padding: 0; box-sizing: border-box;">
+            <For
+                each=move || players().into_iter()
+                key=|(name, _)| name.clone()
+                children=move |(name, player): (String, Player)| {
+                    view! {
+                        <li
+                            on:click={
+                                let name = name.clone();
+                                move |_event| {
+                                    players()
+                                        .iter()
+                                        .for_each(|(n, p)| {
+                                            if *n != name {
+                                                p.is_selected.set(false)
+                                            } else {
+                                                p.is_selected
+                                                    .update(|selected| {
+                                                        *selected = !*selected;
+                                                    });
                                             }
-                                        }
+                                        });
+                                }
+                            }
 
-                                        title="Flip media horizontally"
-                                        style="height: 100%;"
-                                    >
-                                        "↔"
-                                    </button>
-                                    <button
-                                        on:click={
-                                            let delete = delete.clone();
-                                            let name = name.clone();
-                                            move |_e| delete(name.clone())
-                                        }
+                            style="display: flex; align-items: center; justify-content: space-between; list-style: none; width: 100%; margin: 0; padding: 0; box-sizing: border-box;"
+                            style:border=move || {
+                                if player.is_selected.get() { "3px solid black" } else { "" }
+                            }
+                        >
 
-                                        title="Remove media"
-                                        style="height: 100%;"
-                                    >
-                                        "🗑"
-                                    </button>
-                                </div>
-                            </li>
-                        }
+                            <span
+                                title=name.clone()
+                                style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis;"
+                            >
+                                {name.clone()}
+                            </span>
+                            <div style="display: flex; align-items: center; flex-shrink: 0; height: 1.5rem;">
+                                <button
+                                    on:click={
+                                        let move_up = move_up.clone();
+                                        let name = name.clone();
+                                        move |_e| move_up(name.clone())
+                                    }
+
+                                    title="Move media up"
+                                    style="height: 100%;"
+                                >
+                                    "↑"
+                                </button>
+                                <button
+                                    on:click={
+                                        let move_down = move_down.clone();
+                                        let name = name.clone();
+                                        move |_e| move_down(name.clone())
+                                    }
+
+                                    title="Move media down"
+                                    style="height: 100%;"
+                                >
+                                    "↓"
+                                </button>
+                                <button
+                                    on:click={
+                                        let flip = flip.clone();
+                                        let name = name.clone();
+                                        move |_e| {
+                                            player
+                                                .horizontal_flip
+                                                .update(|is_flipped| *is_flipped = !*is_flipped);
+                                            flip(name.clone(), player.horizontal_flip.get());
+                                        }
+                                    }
+
+                                    title="Flip media horizontally"
+                                    style="height: 100%;"
+                                >
+                                    "↔"
+                                </button>
+                                <button
+                                    on:click={
+                                        let delete = delete.clone();
+                                        let name = name.clone();
+                                        move |_e| delete(name.clone())
+                                    }
+
+                                    title="Remove media"
+                                    style="height: 100%;"
+                                >
+                                    "🗑"
+                                </button>
+                            </div>
+                        </li>
                     }
-                />
+                }
+            />
 
-            </ul>
-        </div>
+        </ul>
     }
 }
