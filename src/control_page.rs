@@ -475,6 +475,8 @@ fn Menu(
 ) -> impl IntoView {
     let websocket = expect_context::<WebsocketContext>();
     let (screen_size, set_screen_size) = create_signal(ScreenSize::default());
+    let (channel, set_channel) = create_signal(String::from("sadmadladsalman"));
+    let (show_channel_player, set_show_channel_player) = create_signal(true);
 
     let new_player = {
         let websocket = websocket.clone();
@@ -523,7 +525,7 @@ fn Menu(
 
                                 let src = format!("data:{};base64,{base64}", file.type_());
 
-                                new_player(file.name(), src, file.type_(), 100, 100, 500, None);
+                                new_player(file.name(), src, file.type_(), -210, -210, 200, None);
                             }
                         });
                     }
@@ -584,34 +586,76 @@ fn Menu(
             style:left=move || format!("{}px", canvas_position().x as f32 * canvas_zoom())
             style:top=move || format!("{}px", canvas_position().y as f32 * canvas_zoom())
         >
-            <p>"Screen border"</p>
-            <label for="height">"Height"</label>
-            <input
-                id="height"
-                type="number"
-                value=move || screen_size().height
-                on:input=move |event| {
-                    if let Ok(new_height) = event_target_value(&event).parse::<i32>() {
-                        set_screen_size.update(|size| size.height = new_height);
-                    }
-                }
-            />
-
-            <label for="width">"Width"</label>
-            <input
-                id="width"
-                type="number"
-                value=move || screen_size().width
-                on:input=move |event| {
-                    if let Ok(new_width) = event_target_value(&event).parse::<i32>() {
-                        set_screen_size.update(|size| size.width = new_width);
-                    }
-                }
-            />
-
+        <Show when=move || show_channel_player()>
+            <iframe
+                style="pointer-events: none; opacity: 60%;"
+                src=move || format!("https://player.twitch.tv/?{}&parent=overlay.bksalman.com", channel())
+                height="100%"
+                width="100%"
+                autoplay
+                muted
+            >
+            </iframe>
+        </Show>
         </div>
 
         <div style="height: 100vh; width: 20vw; background: #535594; position: absolute; left: 0; top: 0; z-index: 5000; margin: 0; padding: 0; box-sizing: border-box;">
+            <div>
+                <div>
+                    <label for="show-channel-player">"Show player"</label>
+                    <input
+                        id="show-channel-player"
+                        type="checkbox"
+                        checked=move || show_channel_player()
+                        on:change=move |event| {
+                            set_show_channel_player(event_target_checked(&event));
+                        }
+                    />
+                </div>
+                <div>
+                    <label for="channel">"Channel: "</label>
+                    <input
+                        id="channel"
+                        value=move || channel()
+                        on:input=move |event| {
+                            let value = event_target_value(&event);
+                            set_channel(value);
+                        }
+                    />
+                </div>
+            </div>
+
+            <hr/>
+
+            <div>
+                <p>"Screen border"</p>
+                <label for="height">"Height"</label>
+                <input
+                    id="height"
+                    type="number"
+                    value=move || screen_size().height
+                    on:input=move |event| {
+                        if let Ok(new_height) = event_target_value(&event).parse::<i32>() {
+                            set_screen_size.update(|size| size.height = new_height);
+                        }
+                    }
+                />
+
+                <label for="width">"Width"</label>
+                <input
+                    id="width"
+                    type="number"
+                    value=move || screen_size().width
+                    on:input=move |event| {
+                        if let Ok(new_width) = event_target_value(&event).parse::<i32>() {
+                            set_screen_size.update(|size| size.width = new_width);
+                        }
+                    }
+                />
+            </div>
+
+            <hr/>
+
             <ul style="width: 100%; margin: 0; padding: 0; box-sizing: border-box;">
                 <For
                     each=move || players().into_iter()
