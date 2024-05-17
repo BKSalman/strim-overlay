@@ -589,7 +589,7 @@ fn Menu(
         <Show when=move || show_channel_player()>
             <iframe
                 style="pointer-events: none; opacity: 60%;"
-                src=move || format!("https://player.twitch.tv/?{}&parent=overlay.bksalman.com", channel())
+                src=move || format!("https://player.twitch.tv/?channel={}&parent=overlay.bksalman.com&muted=true&autoplay=true", channel())
                 height="100%"
                 width="100%"
                 autoplay
