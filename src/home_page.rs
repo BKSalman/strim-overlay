@@ -56,7 +56,7 @@ fn Players() -> impl IntoView {
 
     view! {
         <For
-            each=move || players().into_iter()
+            each=move || players().into_iter().rev()
             key=|(name, _)| name.clone()
             children=move |(_name, player): (String, Player)| {
                 view! {
@@ -79,7 +79,6 @@ fn Players() -> impl IntoView {
                             if player.horizontal_flip.get() { "scaleX(-1)" } else { "" }
                         }
                     >
-
                         {move || {
                             let file_type = player.file_type.get();
                             if file_type.starts_with("video") {
@@ -106,7 +105,6 @@ fn Players() -> impl IntoView {
                                 view! {}.into_view()
                             }
                         }}
-
                     </div>
                 }
             }
