@@ -135,15 +135,16 @@ pub fn ControlPage() -> impl IntoView {
     });
 
     let _ = use_event_listener(use_window(), leptos::ev::wheel, move |event| {
+        let delta = (event.delta_y() / 1000.).abs() as f32;
         if event.delta_y() > 0. {
             set_canvas_zoom.update(|current_zoom| {
-                if *current_zoom - 0.1 > 0. {
-                    *current_zoom -= 0.1;
+                if *current_zoom - delta > 0. {
+                    *current_zoom -= delta;
                 }
             });
         } else {
             set_canvas_zoom.update(|current_zoom| {
-                *current_zoom += 0.1;
+                *current_zoom += delta;
             });
         }
     });
