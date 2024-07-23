@@ -83,7 +83,17 @@ fn Players() -> impl IntoView {
                         {move || {
                             match player.media_type {
                                 crate::MediaType::Text => {
-                                    view! { <span>{player.data.get()}</span> }.into_view()
+                                    view! {
+                                        <div
+                                            style="width: 100%; height: 100%;"
+                                            style:font-size=move || {
+                                                format!("{}px", (player.width.get() / 5) as f32)
+                                            }
+                                        >
+                                            <span>{move || player.data.get()}</span>
+                                        </div>
+                                    }
+                                        .into_view()
                                 }
                                 crate::MediaType::Image => {
                                     view! {

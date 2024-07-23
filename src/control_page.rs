@@ -422,10 +422,13 @@ fn Players(
                             match player.media_type {
                                 crate::MediaType::Text => {
                                     view! {
-                                        <div style="width: 100%; height: 100%; container-type:size;">
-                                            <span style="font-size: 30cqw;">
-                                                {move || player.data.get()}
-                                            </span>
+                                        <div
+                                            style="width: 100%; height: 100%;"
+                                            style:font-size=move || {
+                                                format!("{}px", (player.width.get() / 5) as f32 * canvas_zoom())
+                                            }
+                                        >
+                                            <span>{move || player.data.get()}</span>
                                         </div>
                                     }
                                         .into_view()
