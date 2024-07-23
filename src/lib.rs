@@ -29,10 +29,17 @@ pub fn hydrate() {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MediaType {
+    Text,
+    Image,
+    Video,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
     pub name: RwSignal<String>,
-    pub url: RwSignal<String>,
-    pub file_type: RwSignal<String>,
+    pub data: RwSignal<String>,
+    pub media_type: MediaType,
     pub position: RwSignal<Position>,
     pub width: RwSignal<i32>,
     /// None means this should keep the aspect ratio of the player and set the height to auto
@@ -45,8 +52,8 @@ impl From<ServerPlayer> for Player {
     fn from(value: ServerPlayer) -> Self {
         Self {
             name: RwSignal::new(value.name),
-            url: RwSignal::new(value.url),
-            file_type: RwSignal::new(value.file_type),
+            data: RwSignal::new(value.data),
+            media_type: value.media_type,
             position: RwSignal::new(value.position),
             width: RwSignal::new(value.width),
             height: RwSignal::new(value.height),
@@ -59,8 +66,8 @@ impl From<ServerPlayer> for Player {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerPlayer {
     pub name: String,
-    pub url: String,
-    pub file_type: String,
+    pub data: String,
+    pub media_type: MediaType,
     pub position: Position,
     pub width: i32,
     /// None means this should keep the aspect ratio of the player and set the height to auto
@@ -68,7 +75,7 @@ pub struct ServerPlayer {
     horizontal_flip: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Position {
     x: i32,
     y: i32,
@@ -77,6 +84,39 @@ pub struct Position {
 impl Position {
     pub fn new(x: i32, y: i32) -> Self {
         Self { x, y }
+    }
+}
+
+impl std::ops::Sub for Position {
+    type Output = Position;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::Output {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+
+impl std::ops::Add for Position {
+    type Output = Position;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::Output {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+
+impl std::ops::Mul<f32> for Position {
+    type Output = Position;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        Self::Output {
+            x: (self.x as f32 * rhs) as i32,
+            y: (self.y as f32 * rhs) as i32,
+        }
     }
 }
 
@@ -107,10 +147,10 @@ pub enum Message {
         height: Option<i32>,
     },
     GetAllPlayers,
-    NewPlayer {
+    NewMedia {
         name: String,
-        src_url: String,
-        file_type: String,
+        data: String,
+        media_type: MediaType,
         position: Position,
         width: i32,
         height: Option<i32>,

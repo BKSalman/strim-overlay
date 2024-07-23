@@ -42,7 +42,7 @@ pub async fn is_authorized(access_token: String) -> Result<bool, ServerFnError> 
 
 #[cfg(feature = "ssr")]
 pub mod ssr {
-    use crate::{server::is_authorized, Event, Message as OverlayMessage, ServerPlayer};
+    use crate::{server::is_authorized, Event, MediaType, Message as OverlayMessage, ServerPlayer};
     use axum::extract::{ws::Message, State};
     use indexmap::IndexMap;
     use leptos::*;
@@ -130,14 +130,14 @@ pub mod ssr {
                                         // let event = bincode::serialize(&event).unwrap();
                                         // let _ = socket.send(Message::Binary(event)).await;
                                     }
-                                    OverlayMessage::NewPlayer { name, src_url, file_type, position, width, height } => {
+                                    OverlayMessage::NewMedia { name, data, media_type, position, width, height } => {
                                         if !authorized {
                                             logging::log!("NewPlayer not authorized");
                                             continue;
                                         }
                                         add_new_player(socket_id,
                                             state.broadcaster.clone(),
-                                            src_url, file_type, position, width,
+                                            data, media_type, position, width,
                                             height, &mut socket,
                                             state.players.clone(),
                                             name,
@@ -270,8 +270,8 @@ pub mod ssr {
     async fn add_new_player(
         socket_id: u32,
         broadcaster: tokio::sync::broadcast::Sender<(u32, Event)>,
-        src_url: String,
-        file_type: String,
+        data: String,
+        media_type: MediaType,
         position: crate::Position,
         width: i32,
         height: Option<i32>,
@@ -279,10 +279,6 @@ pub mod ssr {
         players: std::sync::Arc<tokio::sync::RwLock<IndexMap<String, ServerPlayer>>>,
         name: String,
     ) -> anyhow::Result<()> {
-        if file_type != "video/webm" && !file_type.starts_with("image") {
-            return Ok(());
-        }
-
         let duplicated_count = players
             .read()
             .await
@@ -305,14 +301,14 @@ pub mod ssr {
 
         let player = ServerPlayer {
             name,
-            url: src_url,
-            file_type,
+            data,
+            media_type,
             position,
             width,
             height,
             horizontal_flip: false,
         };
-        logging::log!("adding new player: {}", player.file_type);
+        logging::log!("adding new player: {:?}", player.media_type);
 
         players
             .write()

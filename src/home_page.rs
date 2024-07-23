@@ -79,32 +79,37 @@ fn Players() -> impl IntoView {
                             if player.horizontal_flip.get() { "scaleX(-1)" } else { "" }
                         }
                     >
+
                         {move || {
-                            let file_type = player.file_type.get();
-                            if file_type.starts_with("video") {
-                                view! {
-                                    <video
-                                        style="width: 100%; height: 100%;"
-                                        autoplay
-                                        loop
-                                        src=player.url.get()
-                                    ></video>
+                            match player.media_type {
+                                crate::MediaType::Text => {
+                                    view! { <span>{player.data.get()}</span> }.into_view()
                                 }
-                                    .into_view()
-                            } else if file_type.starts_with("image") {
-                                view! {
-                                    <img
-                                        style="width: 100%; height: 100%;"
-                                        autoplay
-                                        loop
-                                        src=player.url.get()
-                                    />
+                                crate::MediaType::Image => {
+                                    view! {
+                                        <img
+                                            style="width: 100%; height: 100%;"
+                                            autoplay
+                                            loop
+                                            src=player.data.get()
+                                        />
+                                    }
+                                        .into_view()
                                 }
-                                    .into_view()
-                            } else {
-                                view! {}.into_view()
+                                crate::MediaType::Video => {
+                                    view! {
+                                        <video
+                                            style="width: 100%; height: 100%;"
+                                            autoplay
+                                            loop
+                                            src=player.data.get()
+                                        ></video>
+                                    }
+                                        .into_view()
+                                }
                             }
                         }}
+
                     </div>
                 }
             }

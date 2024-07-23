@@ -25,7 +25,10 @@
       let 
         pkgs = import inputs.nixpkgs { inherit system; overlays = [ inputs.rust-overlay.overlays.default ]; };
 
-        rustToolChain = (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml);
+        devRustToolChain = (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml);
+        rustToolChain = ((pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml).override {
+          extensions = [];
+        });
 
         craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolChain;
 
@@ -83,7 +86,7 @@
       devShells.default = mkShell {
 
           packages = [
-            rustToolChain
+            devRustToolChain
             cargo-leptos
             sass
             leptosfmt

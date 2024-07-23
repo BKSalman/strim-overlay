@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     app::{handle_websocket_message, WebsocketContext},
     server::is_authorized,
-    Message, Player, Position,
+    MediaType, Message, Player, Position,
 };
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
@@ -419,45 +419,55 @@ fn Players(
                     >
 
                         {move || {
-                            let file_type = player.file_type.get();
-                            if file_type.starts_with("video") {
-                                view! {
-                                    <video
-                                        style="width: 100%; height: 100%;"
-                                        style:outline=move || {
-                                            if player.is_selected.get() {
-                                                "3px solid black"
-                                            } else {
-                                                ""
-                                            }
-                                        }
-
-                                        autoplay
-                                        loop
-                                        src=player.url.get()
-                                    ></video>
+                            match player.media_type {
+                                crate::MediaType::Text => {
+                                    view! {
+                                        <div style="width: 100%; height: 100%; container-type:size;">
+                                            <span style="font-size: 30cqw;">
+                                                {move || player.data.get()}
+                                            </span>
+                                        </div>
+                                    }
+                                        .into_view()
                                 }
-                                    .into_view()
-                            } else if file_type.starts_with("image") {
-                                view! {
-                                    <img
-                                        style="width: 100%; height: 100%;"
-                                        style:outline=move || {
-                                            if player.is_selected.get() {
-                                                "3px solid black"
-                                            } else {
-                                                ""
+                                crate::MediaType::Image => {
+                                    view! {
+                                        <img
+                                            style="width: 100%; height: 100%;"
+                                            style:outline=move || {
+                                                if player.is_selected.get() {
+                                                    "3px solid black"
+                                                } else {
+                                                    ""
+                                                }
                                             }
-                                        }
 
-                                        autoplay
-                                        loop
-                                        src=player.url.get()
-                                    />
+                                            autoplay
+                                            loop
+                                            src=player.data.get()
+                                        />
+                                    }
+                                        .into_view()
                                 }
-                                    .into_view()
-                            } else {
-                                view! {}.into_view()
+                                crate::MediaType::Video => {
+                                    view! {
+                                        <video
+                                            style="width: 100%; height: 100%;"
+                                            style:outline=move || {
+                                                if player.is_selected.get() {
+                                                    "3px solid black"
+                                                } else {
+                                                    ""
+                                                }
+                                            }
+
+                                            autoplay
+                                            loop
+                                            src=player.data.get()
+                                        ></video>
+                                    }
+                                        .into_view()
+                                }
                             }
                         }}
 
@@ -482,12 +492,12 @@ fn Menu(
 
     let new_player = {
         let websocket = websocket.clone();
-        move |name, src_url, file_type, x, y, width, height| {
+        move |name, data, media_type, x, y, width, height| {
             websocket.send(
-                bincode::serialize(&Message::NewPlayer {
+                bincode::serialize(&Message::NewMedia {
                     name,
-                    src_url,
-                    file_type,
+                    data,
+                    media_type,
                     position: Position::new(x, y),
                     width,
                     height,
@@ -527,7 +537,13 @@ fn Menu(
 
                                 let src = format!("data:{};base64,{base64}", file.type_());
 
-                                new_player(file.name(), src, file.type_(), -210, -210, 200, None);
+                                let media_type = if file.type_().starts_with("video") {
+                                    MediaType::Video
+                                } else {
+                                    MediaType::Image
+                                };
+
+                                new_player(file.name(), src, media_type, 100, 100, 200, None);
                             }
                         });
                     }
@@ -597,7 +613,57 @@ fn Menu(
 
             <hr/>
 
+            <NewText screen_size/>
             <PlayersList players/>
+        </div>
+    }
+}
+
+#[component]
+fn NewText(screen_size: ReadSignal<ScreenSize>) -> impl IntoView {
+    let websocket = expect_context::<WebsocketContext>();
+    let (show_input, set_show_input) = create_signal(false);
+    let (text_content, set_text_content) = create_signal(String::new());
+
+    let send_new_text = move || {
+        let message = Message::NewMedia {
+            name: text_content(),
+            data: text_content(),
+            media_type: MediaType::Text,
+            position: Position {
+                x: 0,
+                y: screen_size().height,
+            },
+            width: 200,
+            height: Some(200),
+        };
+        let message = bincode::serialize(&message).unwrap();
+        websocket.send(message);
+    };
+
+    view! {
+        <div>
+            <button on:click=move |_| {
+                set_show_input(true);
+            }>"Create text"</button>
+            <div style:display=move || if show_input() { "" } else { "none" }>
+                <input
+                    on:change=move |event| set_text_content(event_target_value(&event))
+                    prop:value=move || text_content()
+                />
+                <button on:click=move |_| {
+                    set_show_input(false);
+                    if text_content().is_empty() {
+                        return;
+                    }
+                    logging::log!("{}", text_content());
+                    send_new_text();
+                    set_text_content.update(|s| s.clear());
+                }>
+
+                    "Add"
+                </button>
+            </div>
         </div>
     }
 }
