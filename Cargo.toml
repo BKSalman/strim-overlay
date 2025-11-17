@@ -1,40 +1,45 @@
 [package]
 name = "strim-overlay"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-axum = { version = "0.7", optional = true, features = ["macros"] }
-console_error_panic_hook = "0.1"
-leptos = { version = "0.6", features = ["nightly"] }
-leptos_axum = { version = "0.6", optional = true }
-leptos_meta = { version = "0.6", features = ["nightly"] }
-leptos_router = { version = "0.6", features = ["nightly"] }
+axum = { version = "0.8.0", optional = true, features = ["macros"] }
+console_error_panic_hook = { version = "0.1", optional = true }
+leptos = { version = "0.8.0", features = ["nightly"] }
+leptos_axum = { version = "0.8.0", optional = true }
+leptos_meta = { version = "0.8.0" }
+leptos_router = { version = "0.8.0", features = ["nightly"] }
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
-tower = { version = "0.4", optional = true }
-tower-http = { version = "0.5", features = ["fs", "compression-gzip"], optional = true }
-wasm-bindgen = "=0.2.92"
+tower = { version = "0.5.2", optional = true }
+tower-http = { version = "0.6.6", features = ["fs", "compression-gzip"], optional = true }
+wasm-bindgen = { version = "=0.2.100", optional = true }
 thiserror = "1"
-tracing = { version = "0.1", optional = true }
+tracing = { version = "0.1" }
 http = "1"
 serde = { version = "1.0.197", features = ["derive"] }
-leptos-use = { version = "0.10.5", features = ["serde"] }
+leptos-use = { version = "0.16.3" }
 cfg-if = "1.0.0"
 bincode = "1.3.3"
 scraper = { version = "0.19.0", optional = true }
-reqwest = { version = "0.12.2", default_features = false, features = ["rustls-tls", "json"], optional = true }
+reqwest = { version = "0.12.2", default-features = false, features = ["rustls-tls", "json"], optional = true }
 serde_json = { version = "1.0.115", optional = true }
 url = { version = "2.5.0", optional = true }
 base64 = { version = "0.22.0" }
 anyhow = "1.0.81"
 wasm-bindgen-futures = "0.4.42"
 indexmap = { version = "2.2.6", features = ["serde"] }
+codee = { version = "0.3.3", features = ["bincode_serde", "json_serde"] }
 
 [features]
-hydrate = ["leptos/hydrate", "leptos_meta/hydrate", "leptos_router/hydrate"]
+hydrate = [
+    "leptos/hydrate",
+    "dep:console_error_panic_hook",
+    "dep:wasm-bindgen"
+]
 ssr = [
     "dep:axum",
     "dep:tokio",
@@ -45,7 +50,6 @@ ssr = [
     "dep:serde_json",
     "dep:url",
     "dep:reqwest",
-    "dep:tracing",
     "leptos/ssr",
     "leptos_meta/ssr",
     "leptos_router/ssr",

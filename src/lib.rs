@@ -1,11 +1,12 @@
 use indexmap::IndexMap;
-use leptos::LeptosOptions;
-use leptos::RwSignal;
+use leptos::prelude::*;
+use leptos_meta::MetaTags;
 use serde::{Deserialize, Serialize};
+
+use crate::app::App;
 
 pub mod app;
 pub mod control_page;
-pub mod error_template;
 pub mod home_page;
 pub mod server;
 
@@ -13,7 +14,6 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "ssr")] {
         use tokio::sync::RwLock;
         use std::sync::Arc;
-        use leptos_router::RouteListing;
         use axum::extract::FromRef;
 
         pub mod fileserv;
@@ -23,9 +23,28 @@ cfg_if::cfg_if! {
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn hydrate() {
-    use crate::app::*;
+    use crate::app::App;
+
     console_error_panic_hook::set_once();
-    leptos::mount_to_body(App);
+    leptos::mount::hydrate_body(App);
+}
+
+pub fn shell(options: LeptosOptions) -> impl IntoView {
+    view! {
+        <!DOCTYPE html>
+        <html lang="en">
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <AutoReload options=options.clone() />
+                <HydrationScripts options/>
+                <MetaTags/>
+            </head>
+            <body>
+                <App/>
+            </body>
+        </html>
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,8 +147,6 @@ pub struct AppState {
     #[cfg(feature = "ssr")]
     pub broadcaster: tokio::sync::broadcast::Sender<(u32, Event)>,
     pub leptos_options: LeptosOptions,
-    #[cfg(feature = "ssr")]
-    pub routes: Vec<RouteListing>,
 }
 
 /// Messages from frontend to backend

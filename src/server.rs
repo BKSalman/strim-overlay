@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 
 #[server]
 pub async fn is_authorized(access_token: String) -> Result<bool, ServerFnError> {
@@ -42,8 +42,8 @@ pub async fn is_authorized(access_token: String) -> Result<bool, ServerFnError> 
 
 #[cfg(feature = "ssr")]
 pub mod ssr {
-    use crate::{server::is_authorized, Event, MediaType, Message as OverlayMessage, ServerPlayer};
-    use axum::extract::{ws::Message, State};
+    use crate::{Event, MediaType, Message as OverlayMessage, ServerPlayer, server::is_authorized};
+    use axum::extract::{State, ws::Message};
     use indexmap::IndexMap;
     use leptos::*;
     use serde::Deserialize;
@@ -85,7 +85,7 @@ pub mod ssr {
                         continue;
                     }
                     let event = bincode::serialize(&event).unwrap();
-                    let _ = socket.send(Message::Binary(event)).await;
+                    let _ = socket.send(Message::Binary(event.into())).await;
                 }
                 Some(message) = socket.recv() => {
                     match message {
@@ -149,7 +149,7 @@ pub mod ssr {
                                             state.players.read().await.clone(),
                                         ))
                                         .unwrap();
-                                        let _ = socket.send(Message::Binary(event)).await;
+                                        let _ = socket.send(Message::Binary(event.into())).await;
                                     }
                                     OverlayMessage::SetSize { player_name, width, height } => {
                                         if !authorized {
@@ -188,7 +188,7 @@ pub mod ssr {
                                             let _ = state.broadcaster.send((socket_id, event.clone()));
 
                                             let event = bincode::serialize(&event).unwrap();
-                                            let _ = socket.send(Message::Binary(event)).await;
+                                            let _ = socket.send(Message::Binary(event.into())).await;
                                         }
                                     },
                                     OverlayMessage::MovePlayerUp { player_name } => {
@@ -206,7 +206,7 @@ pub mod ssr {
                                                 let _ = state.broadcaster.send((socket_id, event.clone()));
 
                                                 let event = bincode::serialize(&event).unwrap();
-                                                let _ = socket.send(Message::Binary(event)).await;
+                                                let _ = socket.send(Message::Binary(event.into())).await;
                                             }
                                         }
                                     },
@@ -226,7 +226,7 @@ pub mod ssr {
                                                 let _ = state.broadcaster.send((socket_id, event.clone()));
 
                                                 let event = bincode::serialize(&event).unwrap();
-                                                let _ = socket.send(Message::Binary(event)).await;
+                                                let _ = socket.send(Message::Binary(event.into())).await;
                                             }
                                         }
                                     },
@@ -250,7 +250,7 @@ pub mod ssr {
                                         #[cfg(debug_assertions)]
                                         logging::log!("socket: {socket_id} ping");
                                         let event = bincode::serialize(&Event::Pong).unwrap();
-                                        let _ = socket.send(Message::Binary(event)).await;
+                                        let _ = socket.send(Message::Binary(event.into())).await;
                                     }
                                 },
                                 Err(e) => logging::error!("{e}"),
@@ -320,7 +320,7 @@ pub mod ssr {
         let _ = broadcaster.send((socket_id, event.clone()));
 
         let event = bincode::serialize(&event).unwrap();
-        let _ = socket.send(Message::Binary(event)).await;
+        let _ = socket.send(Message::Binary(event.into())).await;
 
         Ok(())
     }
@@ -328,9 +328,9 @@ pub mod ssr {
 
 #[server(IncrementCounter, "/api/counter")]
 pub async fn increment_counter() -> Result<String, ServerFnError> {
-    let state = use_context::<AppState>().unwrap();
     use crate::AppState;
-    use leptos::*;
+
+    let state = use_context::<AppState>().unwrap();
 
     Ok(format!("{state:?}"))
 }

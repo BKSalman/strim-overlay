@@ -1,42 +1,21 @@
-use axum::{
-    body::Body as AxumBody,
-    extract::{Path, Request},
-    response::IntoResponse,
-};
 use indexmap::IndexMap;
-use leptos_axum::handle_server_fns_with_context;
 use strim_overlay::server::ssr::websocket;
 use tower_http::compression::CompressionLayer;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "ssr")] {
         use axum::{
-            routing::{get, post},
+            routing::{get},
             Router,
         };
-        use leptos::*;
+        use strim_overlay::shell;
         use leptos_axum::{generate_route_list, LeptosRoutes};
-        use strim_overlay::{AppState, fileserv::file_and_error_handler};
-
-        async fn server_fn_handler(
-            // State(_app_state): State<AppState>,
-            path: Path<String>,
-            request: Request<AxumBody>,
-        ) -> impl IntoResponse {
-            leptos::logging::log!("{:?}", path);
-
-            handle_server_fns_with_context(
-                move || {
-                    // provide_context(app_state.count.clone());
-                },
-                request,
-            )
-            .await
-        }
+        use leptos::config::get_configuration;
+        use strim_overlay::{AppState};
 
         #[tokio::main]
         async fn main() {
-            let conf = get_configuration(None).await.unwrap();
+            let conf = get_configuration(None).unwrap();
             let leptos_options = conf.leptos_options;
             let addr = leptos_options.site_addr;
             let routes = generate_route_list(strim_overlay::app::App);
@@ -44,25 +23,23 @@ cfg_if::cfg_if! {
             let (sender, _receiver) = tokio::sync::broadcast::channel::<(u32, strim_overlay::Event)>(1024);
 
             let state = AppState {
-                routes: routes.clone(),
                 leptos_options,
                 players: std::sync::Arc::new(tokio::sync::RwLock::new(IndexMap::new())),
                 broadcaster: sender,
             };
 
             let app = Router::new()
-                .route(
-                    "/api/*fn_name",
-                    post(server_fn_handler).get(server_fn_handler),
-                )
                 .route("/ws", get(websocket))
-                .leptos_routes(&state, routes, strim_overlay::app::App)
+                 .leptos_routes(&state, routes, {
+                    let leptos_options = state.leptos_options.clone();
+                    move || shell(leptos_options.clone())
+                })
                 .route_layer(CompressionLayer::new().gzip(true))
-                .fallback(file_and_error_handler)
+                .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
                 .with_state(state);
 
             let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-            logging::log!("listening on http://{}", &addr);
+            tracing::info!("listening on http://{}", &addr);
             axum::serve(listener, app.into_make_service())
                 .await
                 .unwrap();

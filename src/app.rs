@@ -1,29 +1,26 @@
-use crate::{
-    control_page::ControlPage,
-    error_template::{AppError, ErrorTemplate},
-    home_page::HomePage,
-    Event, Player,
-};
+use crate::{Event, Player, control_page::ControlPage, home_page::HomePage};
+use codee::binary::BincodeSerdeCodec;
 use indexmap::IndexMap;
-use leptos::*;
+use leptos::prelude::*;
 use leptos_meta::*;
+use leptos_router::components::{Route, Router, Routes};
 use leptos_router::*;
-use leptos_use::{core::ConnectionReadyState, use_websocket, UseWebsocketReturn};
-use std::rc::Rc;
+use leptos_use::{UseWebSocketReturn, core::ConnectionReadyState, use_websocket};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct WebsocketContext {
     pub message: Signal<Option<Vec<u8>>>,
-    send: Rc<dyn Fn(Vec<u8>)>, // use Rc to make it easily cloneable
-    open: Rc<dyn Fn()>,
+    send: Arc<dyn Fn(&Vec<u8>) + Sync + Send>, // use Arc to make it easily cloneable
+    open: Arc<dyn Fn() + Sync + Send>,
     pub ready_state: Signal<ConnectionReadyState>,
 }
 
 impl WebsocketContext {
     pub fn new(
         message: Signal<Option<Vec<u8>>>,
-        send: Rc<dyn Fn(Vec<u8>)>,
-        open: Rc<dyn Fn()>,
+        send: Arc<dyn Fn(&Vec<u8>) + Sync + Send>,
+        open: Arc<dyn Fn() + Sync + Send>,
         ready_state: Signal<ConnectionReadyState>,
     ) -> Self {
         Self {
@@ -36,7 +33,7 @@ impl WebsocketContext {
 
     // create a method to avoid having to use parantheses around the field
     #[inline(always)]
-    pub fn send(&self, message: Vec<u8>) {
+    pub fn send(&self, message: &Vec<u8>) {
         (self.send)(message)
     }
 
@@ -60,9 +57,9 @@ impl core::fmt::Display for BaseUrl {
 pub fn App() -> impl IntoView {
     provide_meta_context();
 
-    let (ws_url, set_ws_url) = create_signal(String::new());
+    let (ws_url, set_ws_url) = signal(String::new());
 
-    create_effect(move |_| {
+    Effect::new(move |_| {
         let location = window().location();
 
         let protocol = location.protocol().unwrap();
@@ -72,21 +69,24 @@ pub fn App() -> impl IntoView {
             location.host().unwrap()
         );
 
-        set_ws_url.set_untracked(base_ws_url);
+        *set_ws_url.write_untracked() = base_ws_url;
     });
 
-    let UseWebsocketReturn {
-        message_bytes,
-        send_bytes,
+    let UseWebSocketReturn {
+        message,
+        send,
         ready_state,
         open,
         ..
-    } = use_websocket(&format!("{}/ws", ws_url.get_untracked()));
+    } = use_websocket::<Vec<u8>, Vec<u8>, BincodeSerdeCodec>(&format!(
+        "{}/ws",
+        ws_url.get_untracked()
+    ));
 
     provide_context(WebsocketContext::new(
-        message_bytes,
-        Rc::new(send_bytes.clone()),
-        Rc::new(open.clone()),
+        message,
+        Arc::new(send.clone()),
+        Arc::new(open.clone()),
         ready_state,
     ));
 
@@ -95,15 +95,11 @@ pub fn App() -> impl IntoView {
 
         <Title text="Alo"/>
 
-        <Router fallback=|| {
-            let mut outside_errors = Errors::default();
-            outside_errors.insert_with_default_key(AppError::NotFound);
-            view! { <ErrorTemplate outside_errors/> }.into_view()
-        }>
+        <Router>
             <main>
-                <Routes>
-                    <Route path="" view=HomePage/>
-                    <Route path="/control" view=ControlPage/>
+                <Routes fallback=|| { "Not found" }>
+                    <Route path=path!("/") view=HomePage/>
+                    <Route path=path!("/control") view=ControlPage/>
                 </Routes>
             </main>
         </Router>
@@ -112,27 +108,27 @@ pub fn App() -> impl IntoView {
 
 pub fn handle_websocket_message(
     websocket: WebsocketContext,
-    owner: Owner,
+    // owner: Owner,
     set_players: WriteSignal<IndexMap<String, Player>>,
 ) {
     if let Some(message) = websocket.message.get() {
         match bincode::deserialize::<Event>(&message).unwrap() {
             Event::AllPlayers(incoming_players) => {
-                leptos::with_owner(owner, || {
-                    let local_players = incoming_players
-                        .into_iter()
-                        .map(|(n, p)| (n, Player::from(p)))
-                        .collect();
-                    set_players.set(local_players);
-                });
+                // leptos::with_owner(owner, || {
+                let local_players = incoming_players
+                    .into_iter()
+                    .map(|(n, p)| (n, Player::from(p)))
+                    .collect();
+                set_players.set(local_players);
+                // });
             }
             Event::NewPlayer(player) => {
-                leptos::with_owner(owner, || {
-                    let player = Player::from(player);
-                    set_players.update(|players| {
-                        players.insert(player.name.get_untracked(), player);
-                    });
+                // leptos::with_owner(owner, || {
+                let player = Player::from(player);
+                set_players.update(|players| {
+                    players.insert(player.name.get_untracked(), player);
                 });
+                // });
             }
             Event::PositionUpdated {
                 player_name,
@@ -156,13 +152,13 @@ pub fn handle_websocket_message(
                 players.shift_remove(&player_name);
             }),
             Event::PlayerMovedUp { player_name } => set_players.update(|players| {
-                logging::log!("moving {player_name} up");
+                tracing::info!("moving {player_name} up");
                 if let Some(s) = players.get_index_of(&player_name) {
                     players.swap_indices(s, s - 1);
                 }
             }),
             Event::PlayerMovedDown { player_name } => set_players.update(|players| {
-                logging::log!("moving {player_name} down");
+                tracing::info!("moving {player_name} down");
                 if let Some(s) = players.get_index_of(&player_name) {
                     players.swap_indices(s, s + 1);
                 }

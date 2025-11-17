@@ -1,42 +1,58 @@
 use axum::{
     body::Body,
-    extract::State,
-    response::IntoResponse,
     http::{Request, Response, StatusCode, Uri},
+    response::IntoResponse,
 };
-use axum::response::Response as AxumResponse;
 use tower::ServiceExt;
 use tower_http::services::ServeDir;
-use leptos::*;
-use crate::app::App;
 
-pub async fn file_and_error_handler(uri: Uri, State(options): State<LeptosOptions>, req: Request<Body>) -> AxumResponse {
-    let root = options.site_root.clone();
-    let res = get_static_file(uri.clone(), &root).await.unwrap();
+pub async fn file_handler(uri: Uri) -> Result<Response<Body>, (StatusCode, String)> {
+    let res = get_static_file(uri.clone(), "/pkg").await?;
 
-    if res.status() == StatusCode::OK {
-        res.into_response()
+    if res.status() == StatusCode::NOT_FOUND {
+        // try with `.html`
+        // TODO: handle if the Uri has query parameters
+        match format!("{}.html", uri).parse() {
+            Ok(uri_html) => get_static_file(uri_html, "/pkg").await,
+            Err(_) => Err((StatusCode::INTERNAL_SERVER_ERROR, "Invalid URI".to_string())),
+        }
     } else {
-        let handler = leptos_axum::render_app_to_stream(options.to_owned(), App);
-        handler(req).await.into_response()
+        Ok(res)
     }
 }
 
-async fn get_static_file(
-    uri: Uri,
-    root: &str,
-) -> Result<Response<Body>, (StatusCode, String)> {
-    let req = Request::builder()
-        .uri(uri.clone())
-        .body(Body::empty())
-        .unwrap();
+pub async fn get_static_file_handler(uri: Uri) -> Result<Response<Body>, (StatusCode, String)> {
+    let res = get_static_file(uri.clone(), "/static").await?;
+
+    if res.status() == StatusCode::NOT_FOUND {
+        Err((StatusCode::INTERNAL_SERVER_ERROR, "Invalid URI".to_string()))
+    } else {
+        Ok(res)
+    }
+}
+
+async fn get_static_file(uri: Uri, base: &str) -> Result<Response<Body>, (StatusCode, String)> {
+    let req = Request::builder().uri(&uri).body(Body::empty()).unwrap();
+
     // `ServeDir` implements `tower::Service` so we can call it with `tower::ServiceExt::oneshot`
-    // This path is relative to the cargo root
-    match ServeDir::new(root).oneshot(req).await {
-        Ok(res) => Ok(res.into_response()),
-        Err(err) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong: {err}"),
-        )),
+    // When run normally, the root should be the crate root
+    if base == "/static" {
+        match ServeDir::new("./static").oneshot(req).await {
+            Ok(res) => Ok(res.into_response()),
+            Err(err) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Something went wrong: {}", err),
+            )),
+        }
+    } else if base == "/pkg" {
+        match ServeDir::new("./pkg").oneshot(req).await {
+            Ok(res) => Ok(res.into_response()),
+            Err(err) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Something went wrong: {}", err),
+            )),
+        }
+    } else {
+        Err((StatusCode::NOT_FOUND, "Not Found".to_string()))
     }
 }

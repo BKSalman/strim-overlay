@@ -1,10 +1,10 @@
 use indexmap::IndexMap;
-use leptos::*;
+use leptos::prelude::*;
 use leptos_use::{core::ConnectionReadyState, use_interval_fn};
 
 use crate::{
-    app::{handle_websocket_message, WebsocketContext},
     Message, Player,
+    app::{WebsocketContext, handle_websocket_message},
 };
 
 #[component]
@@ -14,40 +14,40 @@ pub fn HomePage() -> impl IntoView {
 
 #[component]
 fn Players() -> impl IntoView {
-    let owner = leptos::Owner::current().expect("there should be an owner");
-    let (players, set_players) = create_signal(IndexMap::<String, Player>::new());
+    // let owner = leptos::Owner::current().expect("there should be an owner");
+    let (players, set_players) = signal(IndexMap::<String, Player>::new());
     let websocket = expect_context::<WebsocketContext>();
 
     {
         let websocket = websocket.clone();
         use_interval_fn(
             move || {
-                websocket.send(bincode::serialize(&Message::Ping).unwrap());
+                websocket.send(&bincode::serialize(&Message::Ping).unwrap());
             },
             5000,
         );
     }
     {
         let websocket = websocket.clone();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             if let ConnectionReadyState::Open = websocket.ready_state.get() {
-                websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+                websocket.send(&bincode::serialize(&Message::GetAllPlayers).unwrap());
             }
         });
     }
 
     {
         let websocket = websocket.clone();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             if let ConnectionReadyState::Open = websocket.ready_state.get() {
-                handle_websocket_message(websocket.clone(), owner, set_players.clone());
+                handle_websocket_message(websocket.clone(), set_players.clone());
             }
         });
     }
 
     {
         let websocket = websocket.clone();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             if let ConnectionReadyState::Closed = websocket.ready_state.get() {
                 websocket.open();
             }
@@ -93,18 +93,16 @@ fn Players() -> impl IntoView {
                                             <span>{move || player.data.get()}</span>
                                         </div>
                                     }
-                                        .into_view()
+                                        .into_any()
                                 }
                                 crate::MediaType::Image => {
                                     view! {
                                         <img
                                             style="width: 100%; height: 100%;"
-                                            autoplay
-                                            loop
                                             src=player.data.get()
                                         />
                                     }
-                                        .into_view()
+                                        .into_any()
                                 }
                                 crate::MediaType::Video => {
                                     view! {
@@ -115,7 +113,7 @@ fn Players() -> impl IntoView {
                                             src=player.data.get()
                                         ></video>
                                     }
-                                        .into_view()
+                                        .into_any()
                                 }
                             }
                         }}

@@ -1,22 +1,28 @@
 use base64::Engine;
+use codee::string::JsonSerdeCodec;
 use indexmap::IndexMap;
 use leptos::{
     ev::MouseEvent,
     html::Input,
     leptos_dom::helpers::{location, location_hash},
-    *,
+    prelude::*,
+    task::spawn_local,
 };
 use leptos_use::{
     core::ConnectionReadyState, storage::use_local_storage, use_event_listener, use_interval_fn,
-    use_window, utils::JsonCodec,
+    use_window,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::{handle_websocket_message, WebsocketContext},
-    server::is_authorized,
     MediaType, Message, Player, Position,
+    app::{WebsocketContext, handle_websocket_message},
+    server::is_authorized,
 };
+
+const ZOOM_SPEED: f64 = 0.002;
+const MIN_ZOOM: f64 = 0.1;
+const MAX_ZOOM: f64 = 5.0;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub struct ScreenSize {
@@ -35,19 +41,19 @@ impl Default for ScreenSize {
 
 #[component]
 pub fn ControlPage() -> impl IntoView {
-    let (base_url, set_base_url) = create_signal(String::new());
-    create_effect(move |_| {
+    let (base_url, set_base_url) = signal(String::new());
+    Effect::new(move |_| {
         let location = window().location();
 
         set_base_url(location.origin().unwrap());
     });
 
     // auth (I guess)
-    let (authorized, set_authorized) = create_signal(false);
+    let (authorized, set_authorized) = signal(false);
     let (access_token, set_access_token, _) =
-        use_local_storage::<Option<String>, JsonCodec>("access_token");
+        use_local_storage::<Option<String>, JsonSerdeCodec>("access_token");
 
-    create_effect(move |_| {
+    Effect::new(move |_| {
         if let Some(hash) = location_hash() {
             if hash.is_empty() {
                 return;
@@ -65,16 +71,16 @@ pub fn ControlPage() -> impl IntoView {
 
     let websocket = expect_context::<WebsocketContext>();
 
-    create_effect(move |_| {
+    Effect::new(move |_| {
         if let Some(access_token) = access_token() {
             spawn_local(async move {
                 // authorize on client
                 let authorized = is_authorized(access_token.clone()).await.is_ok_and(|is| is);
                 if authorized {
-                    logging::log!("authorized");
+                    tracing::debug!("authorized");
                     set_authorized(true);
                 } else {
-                    logging::log!("unauthorized");
+                    tracing::debug!("unauthorized");
                     set_authorized(false);
                 }
             });
@@ -82,13 +88,13 @@ pub fn ControlPage() -> impl IntoView {
     });
     {
         let websocket = websocket.clone();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             if let Some(access_token) = access_token() {
                 // authorize on server
                 let message = Message::Authorize(access_token);
                 match websocket.ready_state.get() {
                     ConnectionReadyState::Open => {
-                        websocket.send(bincode::serialize(&message).unwrap());
+                        websocket.send(&bincode::serialize(&message).unwrap());
                     }
                     _ => {}
                 }
@@ -97,24 +103,24 @@ pub fn ControlPage() -> impl IntoView {
     }
     {
         let websocket = websocket.clone();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             if let ConnectionReadyState::Closed = websocket.ready_state.get() {
                 websocket.open();
             }
         });
     }
 
-    let (show_menu, set_show_menu) = create_signal(true);
+    let (show_menu, set_show_menu) = signal(true);
 
     let _ = use_event_listener(use_window(), leptos::ev::contextmenu, move |event| {
         event.prevent_default();
     });
 
-    let (canvas_move_click, set_canvas_move_click) = create_signal(false);
-    let (canvas_position, set_canvas_position) = create_signal(Position { x: 0, y: 0 });
-    let (canvas_zoom, set_canvas_zoom) = create_signal(1.0f32);
-    let (space_pressed, set_space_pressed) = create_signal(false);
-    let (ctrl_pressed, set_ctrl_pressed) = create_signal(false);
+    let (canvas_move_click, set_canvas_move_click) = signal(false);
+    let (canvas_position, set_canvas_position) = signal(Position { x: 0, y: 0 });
+    let (canvas_zoom, set_canvas_zoom) = signal(1.0f64);
+    let (space_pressed, set_space_pressed) = signal(false);
+    let (ctrl_pressed, set_ctrl_pressed) = signal(false);
 
     let _ = use_event_listener(use_window(), leptos::ev::keyup, move |event| {
         if event.code() == "Escape" {
@@ -135,16 +141,31 @@ pub fn ControlPage() -> impl IntoView {
     });
 
     let _ = use_event_listener(use_window(), leptos::ev::wheel, move |event| {
-        let delta = (event.delta_y() / 1000.).abs() as f32;
-        if event.delta_y() > 0. {
-            set_canvas_zoom.update(|current_zoom| {
-                if *current_zoom - delta > 0. {
-                    *current_zoom -= delta;
-                }
-            });
-        } else {
-            set_canvas_zoom.update(|current_zoom| {
-                *current_zoom += delta;
+        event.prevent_default();
+
+        let zoom_factor = (-event.delta_y() * ZOOM_SPEED).exp();
+
+        let old_zoom = canvas_zoom();
+        let new_zoom = (old_zoom * zoom_factor).clamp(MIN_ZOOM, MAX_ZOOM);
+
+        if (new_zoom - old_zoom).abs() > 0.001 {
+            let mouse_x = event.client_x() as f64;
+            let mouse_y = event.client_y() as f64;
+
+            // Calculate the world point under the mouse cursor before zoom
+            let world_x = (mouse_x / old_zoom) - (canvas_position().x as f64);
+            let world_y = (mouse_y / old_zoom) - (canvas_position().y as f64);
+
+            // After zoom, we want this world point to still be under the mouse
+            // mouse = (world + canvas_pos) * zoom
+            // Solving for new canvas_pos:
+            let new_canvas_x = (mouse_x / new_zoom) - world_x;
+            let new_canvas_y = (mouse_y / new_zoom) - world_y;
+
+            set_canvas_zoom(new_zoom);
+            set_canvas_position(Position {
+                x: new_canvas_x as i32,
+                y: new_canvas_y as i32,
             });
         }
     });
@@ -164,8 +185,8 @@ pub fn ControlPage() -> impl IntoView {
         if canvas_move_click() {
             event.prevent_default();
             set_canvas_position.update(|current_pos| {
-                current_pos.x += (event.movement_x() as f32 / canvas_zoom()) as i32;
-                current_pos.y += (event.movement_y() as f32 / canvas_zoom()) as i32;
+                current_pos.x += (event.movement_x() as f64 / canvas_zoom()) as i32;
+                current_pos.y += (event.movement_y() as f64 / canvas_zoom()) as i32;
             });
         }
     });
@@ -197,7 +218,7 @@ pub fn ControlPage() -> impl IntoView {
         }
     };
 
-    let (players, set_players) = create_signal(IndexMap::<String, Player>::new());
+    let (players, set_players) = signal(IndexMap::<String, Player>::new());
 
     view! {
         <Show when=move || authorized() fallback=fallback_view>
@@ -207,9 +228,9 @@ pub fn ControlPage() -> impl IntoView {
 
                 {move || {
                     if show_menu() {
-                        view! { <Menu players canvas_position canvas_zoom/> }.into_view()
+                        view! { <Menu players canvas_position canvas_zoom/> }.into_any()
                     } else {
-                        view! {}.into_view()
+                        view! {}.into_any()
                     }
                 }}
                 <Players players set_players canvas_position canvas_zoom ctrl_pressed authorized/>
@@ -223,20 +244,20 @@ fn Players(
     players: ReadSignal<IndexMap<String, Player>>,
     set_players: WriteSignal<IndexMap<String, Player>>,
     canvas_position: ReadSignal<Position>,
-    canvas_zoom: ReadSignal<f32>,
+    canvas_zoom: ReadSignal<f64>,
     ctrl_pressed: ReadSignal<bool>,
     authorized: ReadSignal<bool>,
 ) -> impl IntoView {
-    let owner = leptos::Owner::current().expect("there should be an owner");
-    let (move_click, set_move_click) = create_signal(false);
-    let (resize_click, set_resize_click) = create_signal(false);
+    // let owner = leptos::Owner::current().expect("there should be an owner");
+    let (move_click, set_move_click) = signal(false);
+    let (resize_click, set_resize_click) = signal(false);
 
     let websocket = expect_context::<WebsocketContext>();
     {
         let websocket = websocket.clone();
         use_interval_fn(
             move || {
-                websocket.send(bincode::serialize(&Message::Ping).unwrap());
+                websocket.send(&bincode::serialize(&Message::Ping).unwrap());
             },
             5000,
         );
@@ -244,18 +265,18 @@ fn Players(
 
     {
         let websocket = websocket.clone();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             if let ConnectionReadyState::Open = websocket.ready_state.get() {
-                websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+                websocket.send(&bincode::serialize(&Message::GetAllPlayers).unwrap());
             }
         });
     }
 
     {
         let websocket = websocket.clone();
-        create_effect(move |_| {
+        Effect::new(move |_| {
             if let ConnectionReadyState::Open = websocket.ready_state.get() {
-                handle_websocket_message(websocket.clone(), owner, set_players.clone());
+                handle_websocket_message(websocket.clone(), set_players.clone());
             }
         });
     }
@@ -269,7 +290,7 @@ fn Players(
             };
             if let ConnectionReadyState::Open = websocket.ready_state.get() {
                 if authorized() {
-                    websocket.send(bincode::serialize(&message).unwrap());
+                    websocket.send(&bincode::serialize(&message).unwrap());
                 }
             }
         }
@@ -283,12 +304,12 @@ fn Players(
         };
         if let ConnectionReadyState::Open = websocket.ready_state.get() {
             if authorized() {
-                websocket.send(bincode::serialize(&message).unwrap());
+                websocket.send(&bincode::serialize(&message).unwrap());
             }
         }
     };
 
-    let (prev_mouse_pos, set_prev_mouse_pos) = create_signal(Position { x: 0, y: 0 });
+    let (prev_mouse_pos, set_prev_mouse_pos) = signal(Position { x: 0, y: 0 });
 
     let move_mouse = move |width: RwSignal<i32>,
                            height: RwSignal<Option<i32>>,
@@ -304,8 +325,8 @@ fn Players(
             position.update(|pos| {
                 let movement_x = event.x() - prev_mouse_pos().x;
                 let movement_y = event.y() - prev_mouse_pos().y;
-                pos.x += ((movement_x as f32) / canvas_zoom()) as i32;
-                pos.y += ((movement_y as f32) / canvas_zoom()) as i32;
+                pos.x += ((movement_x as f64) / canvas_zoom()) as i32;
+                pos.y += ((movement_y as f64) / canvas_zoom()) as i32;
                 send_set_position(name(), pos.x, pos.y);
                 set_prev_mouse_pos(Position {
                     x: event.x(),
@@ -315,7 +336,7 @@ fn Players(
         } else if resize_click() {
             width.update(|current_width| {
                 *current_width =
-                    (*current_width as f32 + (event.movement_x() as f32 / canvas_zoom())) as i32;
+                    (*current_width as f64 + (event.movement_x() as f64 / canvas_zoom())) as i32;
             });
             height.update(|current_height| {
                 if ctrl_pressed() {
@@ -323,8 +344,8 @@ fn Players(
                     *current_height = None;
                 } else {
                     *current_height = Some(
-                        (current_height.unwrap_or(width()) as f32
-                            + (event.movement_y() as f32 / canvas_zoom()))
+                        (current_height.unwrap_or(width()) as f64
+                            + (event.movement_y() as f64 / canvas_zoom()))
                             as i32,
                     );
                 }
@@ -380,7 +401,7 @@ fn Players(
                         style:left=move || {
                             format!(
                                 "{}px",
-                                (player.position.get().x + canvas_position().x) as f32
+                                (player.position.get().x + canvas_position().x) as f64
                                     * canvas_zoom(),
                             )
                         }
@@ -388,18 +409,18 @@ fn Players(
                         style:top=move || {
                             format!(
                                 "{}px",
-                                (player.position.get().y + canvas_position().y) as f32
+                                (player.position.get().y + canvas_position().y) as f64
                                     * canvas_zoom(),
                             )
                         }
 
                         style:width=move || {
-                            format!("{}px", player.width.get() as f32 * canvas_zoom())
+                            format!("{}px", player.width.get() as f64 * canvas_zoom())
                         }
 
                         style:height=move || {
                             if let Some(height) = player.height.get() {
-                                format!("{}px", height as f32 * canvas_zoom())
+                                format!("{}px", height as f64 * canvas_zoom())
                             } else {
                                 String::from("auto")
                             }
@@ -425,13 +446,13 @@ fn Players(
                                         <div
                                             style="width: 100%; height: 100%;"
                                             style:font-size=move || {
-                                                format!("{}px", (player.width.get() / 5) as f32 * canvas_zoom())
+                                                format!("{}px", (player.width.get() / 5) as f64 * canvas_zoom())
                                             }
                                         >
                                             <span>{move || player.data.get()}</span>
                                         </div>
                                     }
-                                        .into_view()
+                                        .into_any()
                                 }
                                 crate::MediaType::Image => {
                                     view! {
@@ -445,12 +466,10 @@ fn Players(
                                                 }
                                             }
 
-                                            autoplay
-                                            loop
                                             src=player.data.get()
                                         />
                                     }
-                                        .into_view()
+                                        .into_any()
                                 }
                                 crate::MediaType::Video => {
                                     view! {
@@ -469,7 +488,7 @@ fn Players(
                                             src=player.data.get()
                                         ></video>
                                     }
-                                        .into_view()
+                                        .into_any()
                                 }
                             }
                         }}
@@ -485,19 +504,19 @@ fn Players(
 fn Menu(
     players: ReadSignal<IndexMap<String, Player>>,
     canvas_position: ReadSignal<Position>,
-    canvas_zoom: ReadSignal<f32>,
+    canvas_zoom: ReadSignal<f64>,
 ) -> impl IntoView {
     let websocket = expect_context::<WebsocketContext>();
-    let (screen_size, set_screen_size) = create_signal(ScreenSize::default());
-    let (channel, set_channel) = create_signal(String::from("sadmadladsalman"));
-    let (show_stream_player, set_show_stream_player) = create_signal(true);
-    let (interactive_stream_player, set_interactive_stream_player) = create_signal(false);
+    let (screen_size, set_screen_size) = signal(ScreenSize::default());
+    let (channel, set_channel) = signal(String::from("sadmadladsalman"));
+    let (show_stream_player, set_show_stream_player) = signal(true);
+    let (interactive_stream_player, set_interactive_stream_player) = signal(false);
 
     let new_player = {
         let websocket = websocket.clone();
         move |name, data, media_type, x, y, width, height| {
             websocket.send(
-                bincode::serialize(&Message::NewMedia {
+                &bincode::serialize(&Message::NewMedia {
                     name,
                     data,
                     media_type,
@@ -513,11 +532,11 @@ fn Menu(
     let get_all_players = {
         let websocket = websocket.clone();
         move || {
-            websocket.send(bincode::serialize(&Message::GetAllPlayers).unwrap());
+            websocket.send(&bincode::serialize(&Message::GetAllPlayers).unwrap());
         }
     };
 
-    let input_element: NodeRef<Input> = create_node_ref();
+    let input_element: NodeRef<Input> = NodeRef::new();
     let on_file_submit = {
         let new_player = new_player.clone();
         move || {
@@ -573,10 +592,10 @@ fn Menu(
         }>"Refresh"</button>
         <div
             style="z-index: -5000; outline: 3px solid black; position: absolute;"
-            style:width=move || format!("{}px", screen_size().width as f32 * canvas_zoom())
-            style:height=move || format!("{}px", screen_size().height as f32 * canvas_zoom())
-            style:left=move || format!("{}px", canvas_position().x as f32 * canvas_zoom())
-            style:top=move || format!("{}px", canvas_position().y as f32 * canvas_zoom())
+            style:width=move || format!("{}px", screen_size().width as f64 * canvas_zoom())
+            style:height=move || format!("{}px", screen_size().height as f64 * canvas_zoom())
+            style:left=move || format!("{}px", canvas_position().x as f64 * canvas_zoom())
+            style:top=move || format!("{}px", canvas_position().y as f64 * canvas_zoom())
         >
             <Show when=move || show_stream_player()>
                 <iframe
@@ -594,8 +613,6 @@ fn Menu(
 
                     height="100%"
                     width="100%"
-                    autoplay
-                    muted
                 ></iframe>
             </Show>
         </div>
@@ -625,8 +642,8 @@ fn Menu(
 #[component]
 fn NewText(screen_size: ReadSignal<ScreenSize>) -> impl IntoView {
     let websocket = expect_context::<WebsocketContext>();
-    let (show_input, set_show_input) = create_signal(false);
-    let (text_content, set_text_content) = create_signal(String::new());
+    let (show_input, set_show_input) = signal(false);
+    let (text_content, set_text_content) = signal(String::new());
 
     let send_new_text = move || {
         let message = Message::NewMedia {
@@ -641,7 +658,7 @@ fn NewText(screen_size: ReadSignal<ScreenSize>) -> impl IntoView {
             height: Some(200),
         };
         let message = bincode::serialize(&message).unwrap();
-        websocket.send(message);
+        websocket.send(&message);
     };
 
     view! {
@@ -659,7 +676,7 @@ fn NewText(screen_size: ReadSignal<ScreenSize>) -> impl IntoView {
                     if text_content().is_empty() {
                         return;
                     }
-                    logging::log!("{}", text_content());
+                    tracing::debug!("{}", text_content());
                     send_new_text();
                     set_text_content.update(|s| s.clear());
                 }>
@@ -774,21 +791,21 @@ fn PlayersList(players: ReadSignal<IndexMap<String, Player>>) -> impl IntoView {
     let delete = {
         let websocket = websocket.clone();
         move |player_name| {
-            websocket.send(bincode::serialize(&Message::DeletePlayer { player_name }).unwrap());
+            websocket.send(&bincode::serialize(&Message::DeletePlayer { player_name }).unwrap());
         }
     };
 
     let move_up = {
         let websocket = websocket.clone();
         move |player_name| {
-            websocket.send(bincode::serialize(&Message::MovePlayerUp { player_name }).unwrap());
+            websocket.send(&bincode::serialize(&Message::MovePlayerUp { player_name }).unwrap());
         }
     };
 
     let move_down = {
         let websocket = websocket.clone();
         move |player_name| {
-            websocket.send(bincode::serialize(&Message::MovePlayerDown { player_name }).unwrap());
+            websocket.send(&bincode::serialize(&Message::MovePlayerDown { player_name }).unwrap());
         }
     };
 
@@ -796,7 +813,7 @@ fn PlayersList(players: ReadSignal<IndexMap<String, Player>>) -> impl IntoView {
         let websocket = websocket.clone();
         move |player_name, is_flipped| {
             websocket.send(
-                bincode::serialize(&Message::FlipPlayerHorizontally {
+                &bincode::serialize(&Message::FlipPlayerHorizontally {
                     player_name,
                     is_flipped,
                 })
