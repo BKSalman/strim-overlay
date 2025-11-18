@@ -2,7 +2,7 @@
   description = "basic rust development evnvironment";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     rust-overlay= {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -64,6 +64,7 @@
             inherit cargoArtifacts;
             buildPhaseCargoCommand = "cargo leptos build --release -vvv";
             cargoTestCommand = "cargo leptos test --release -vvv";
+            doNotPostBuildInstallCargoBinaries = true;
             cargoExtraArgs = ""; # to remove the `--locked` default flag
             nativeBuildInputs = [
               pkgs.makeWrapper
